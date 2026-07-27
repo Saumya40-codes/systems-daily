@@ -112,13 +112,26 @@ func topicsCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "topics",
 		Short: "List curated topic catalog",
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := config.Load()
+			if err != nil {
+				return err
+			}
+			catalog, err := topics.Load(cfg.TopicsPath)
+			if err != nil {
+				return err
+			}
 			fmt.Printf("%-28s %-12s %s\n", "ID", "CATEGORY", "TITLE")
 			fmt.Println("----------------------------------------------------------------------")
-			for _, t := range topics.Catalog {
+			for _, t := range catalog {
 				fmt.Printf("%-28s %-12s %s\n", t.ID, t.Category, t.Title)
 			}
-			fmt.Printf("\n%d topics\n", len(topics.Catalog))
+			src := "embedded default"
+			if cfg.TopicsPath != "" {
+				src = cfg.TopicsPath
+			}
+			fmt.Printf("\n%d topics (%s)\n", len(catalog), src)
+			return nil
 		},
 	}
 }

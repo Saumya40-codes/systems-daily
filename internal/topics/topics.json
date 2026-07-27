@@ -1,0 +1,634 @@
+{
+  "topics": [
+    {
+      "id": "buddy-allocator",
+      "title": "Buddy memory allocator internals",
+      "category": "memory",
+      "angles": [
+        "block splitting/coalescing",
+        "orders and freelists",
+        "fragmentation tradeoffs"
+      ]
+    },
+    {
+      "id": "slab-allocator",
+      "title": "Slab / object caching allocators (SLAB, SLUB)",
+      "category": "memory",
+      "angles": [
+        "caches vs pages",
+        "per-CPU freelists",
+        "why kernels love slabs"
+      ]
+    },
+    {
+      "id": "jemalloc",
+      "title": "How jemalloc organizes arenas and size classes",
+      "category": "memory",
+      "angles": [
+        "arenas and threads",
+        "tcache",
+        "extent management"
+      ]
+    },
+    {
+      "id": "tcmalloc",
+      "title": "tcmalloc: thread caches and page heaps",
+      "category": "memory",
+      "angles": [
+        "central freelist",
+        "span",
+        "vs glibc malloc"
+      ]
+    },
+    {
+      "id": "mmap-internals",
+      "title": "mmap, demand paging, and anonymous mappings",
+      "category": "memory",
+      "angles": [
+        "page faults",
+        "VMAs",
+        "MAP_PRIVATE vs SHARED"
+      ]
+    },
+    {
+      "id": "tlb-shootdown",
+      "title": "TLB shootdowns and multi-core address spaces",
+      "category": "memory",
+      "angles": [
+        "IPI cost",
+        "lazy TLB",
+        "when munmap hurts"
+      ]
+    },
+    {
+      "id": "virtual-memory",
+      "title": "Virtual memory: page tables, walks, and huge pages",
+      "category": "memory",
+      "angles": [
+        "4-level page tables",
+        "THP",
+        "TLB coverage"
+      ]
+    },
+    {
+      "id": "numa-memory",
+      "title": "NUMA memory placement and first-touch policy",
+      "category": "memory",
+      "angles": [
+        "local vs remote latency",
+        "numactl",
+        "auto-balancing pitfalls"
+      ]
+    },
+    {
+      "id": "gc-vs-manual",
+      "title": "Why systems code still prefers manual memory control",
+      "category": "memory",
+      "angles": [
+        "latency tails",
+        "ownership models",
+        "arenas in games/kernels"
+      ]
+    },
+    {
+      "id": "context-switch",
+      "title": "What actually happens on a context switch",
+      "category": "os",
+      "angles": [
+        "registers \u0026 kernel stack",
+        "scheduler entry",
+        "cost breakdown"
+      ]
+    },
+    {
+      "id": "futex",
+      "title": "Futexes: userspace locking with kernel help",
+      "category": "os",
+      "angles": [
+        "FUTEX_WAIT/WAKE",
+        "mutex fast path",
+        "thundering herd"
+      ]
+    },
+    {
+      "id": "epoll",
+      "title": "epoll readiness model vs select/poll",
+      "category": "os",
+      "angles": [
+        "edge vs level trigger",
+        "epoll_ctl cost",
+        "when it still scales poorly"
+      ]
+    },
+    {
+      "id": "io-uring",
+      "title": "io_uring submission and completion rings",
+      "category": "os",
+      "angles": [
+        "SQ/CQ rings",
+        "fixed buffers",
+        "why it beats epoll+read"
+      ]
+    },
+    {
+      "id": "cgroups-v2",
+      "title": "cgroups v2: resource control for memory and CPU",
+      "category": "os",
+      "angles": [
+        "controllers",
+        "pressure stalls (PSI)",
+        "container reality"
+      ]
+    },
+    {
+      "id": "namespaces",
+      "title": "Linux namespaces and the illusion of isolation",
+      "category": "os",
+      "angles": [
+        "pid/mnt/net",
+        "user namespaces",
+        "what is NOT isolated"
+      ]
+    },
+    {
+      "id": "scheduler-cfs",
+      "title": "CFS: fair scheduling without timeslices as you know them",
+      "category": "os",
+      "angles": [
+        "vruntime",
+        "red-black tree",
+        "nice weights"
+      ]
+    },
+    {
+      "id": "rcu-basics",
+      "title": "RCU: wait-free reads in the kernel",
+      "category": "os",
+      "angles": [
+        "grace periods",
+        "why it works",
+        "userspace RCU existence"
+      ]
+    },
+    {
+      "id": "interrupt-handling",
+      "title": "Hard IRQs, softirqs, and bottom halves",
+      "category": "os",
+      "angles": [
+        "top half constraints",
+        "NAPI",
+        "threaded IRQs"
+      ]
+    },
+    {
+      "id": "page-cache",
+      "title": "The page cache: how files become memory",
+      "category": "os",
+      "angles": [
+        "writeback",
+        "dirty pages",
+        "O_DIRECT escape hatch"
+      ]
+    },
+    {
+      "id": "cache-coherence",
+      "title": "MESI cache coherence and false sharing",
+      "category": "cpu",
+      "angles": [
+        "state machine",
+        "cache lines",
+        "padding atomics"
+      ]
+    },
+    {
+      "id": "memory-ordering",
+      "title": "Memory ordering: acquire, release, and the mess in between",
+      "category": "cpu",
+      "angles": [
+        "x86 TSO vs ARM",
+        "compiler barriers",
+        "a real bug pattern"
+      ]
+    },
+    {
+      "id": "branch-prediction",
+      "title": "Branch predictors and why mispredicts hurt",
+      "category": "cpu",
+      "angles": [
+        "pipeline flush",
+        "indirect branches",
+        "spectre-shaped intuition"
+      ]
+    },
+    {
+      "id": "simd-basics",
+      "title": "SIMD: packing work into vector registers",
+      "category": "cpu",
+      "angles": [
+        "SSE/AVX intuition",
+        "when autovectorization fails",
+        "alignment"
+      ]
+    },
+    {
+      "id": "syscalls",
+      "title": "The syscall path from userspace to kernel",
+      "category": "cpu",
+      "angles": [
+        "syscall instruction",
+        "pt_regs",
+        "vdso fast paths"
+      ]
+    },
+    {
+      "id": "atomic-ops",
+      "title": "Atomic operations and lock-free data structure caveats",
+      "category": "cpu",
+      "angles": [
+        "CAS loops",
+        "ABA",
+        "when locks win"
+      ]
+    },
+    {
+      "id": "tcp-congestion",
+      "title": "TCP congestion control: CUBIC and friends",
+      "category": "net",
+      "angles": [
+        "cwnd dynamics",
+        "loss vs delay signals",
+        "BBR intuition"
+      ]
+    },
+    {
+      "id": "sk-buff",
+      "title": "sk_buff: how the Linux network stack carries packets",
+      "category": "net",
+      "angles": [
+        "linear vs paged data",
+        "checksum offload",
+        "zero-copy paths"
+      ]
+    },
+    {
+      "id": "nics-rings",
+      "title": "NIC ring buffers, DMA, and interrupt moderation",
+      "category": "net",
+      "angles": [
+        "RX/TX rings",
+        "coalescing",
+        "busy poll"
+      ]
+    },
+    {
+      "id": "ebpf-xdp",
+      "title": "XDP and eBPF at the earliest RX point",
+      "category": "net",
+      "angles": [
+        "driver mode",
+        "maps",
+        "drop vs redirect"
+      ]
+    },
+    {
+      "id": "udp-reliability",
+      "title": "Building reliability on UDP (QUIC-shaped thinking)",
+      "category": "net",
+      "angles": [
+        "loss recovery",
+        "connection IDs",
+        "head-of-line blocking"
+      ]
+    },
+    {
+      "id": "bare-metal-boot",
+      "title": "Bare-metal boot: from reset vector to main",
+      "category": "embedded",
+      "angles": [
+        "vector table",
+        "BSS/.data init",
+        "linker scripts"
+      ]
+    },
+    {
+      "id": "rtos-vs-bare",
+      "title": "RTOS scheduling vs bare-metal superloops",
+      "category": "embedded",
+      "angles": [
+        "priorities \u0026 inversion",
+        "stack per task",
+        "when superloop wins"
+      ]
+    },
+    {
+      "id": "dma-embedded",
+      "title": "DMA on microcontrollers: freer CPU, harder bugs",
+      "category": "embedded",
+      "angles": [
+        "descriptors",
+        "cache coherency on MCUs",
+        "half-complete IRQs"
+      ]
+    },
+    {
+      "id": "watchdogs",
+      "title": "Hardware and software watchdogs done right",
+      "category": "embedded",
+      "angles": [
+        "windowed watchdogs",
+        "deadlock vs hang",
+        "safe reset policy"
+      ]
+    },
+    {
+      "id": "flash-wear",
+      "title": "Flash wear leveling and embedded filesystems",
+      "category": "embedded",
+      "angles": [
+        "erase blocks",
+        "LittleFS/SPIFFS ideas",
+        "power-loss safety"
+      ]
+    },
+    {
+      "id": "i2c-spi",
+      "title": "I2C vs SPI: buses, clocks, and failure modes",
+      "category": "embedded",
+      "angles": [
+        "clock stretching",
+        "CS lines",
+        "debugging stuck buses"
+      ]
+    },
+    {
+      "id": "cortex-m-faults",
+      "title": "ARM Cortex-M fault handlers you can actually use",
+      "category": "embedded",
+      "angles": [
+        "HardFault stack frame",
+        "CFSR bits",
+        "post-mortem dumps"
+      ]
+    },
+    {
+      "id": "power-modes",
+      "title": "MCU low-power modes and wake sources",
+      "category": "embedded",
+      "angles": [
+        "stop/standby",
+        "RTC wake",
+        "peripheral clock gates"
+      ]
+    },
+    {
+      "id": "gps-signals",
+      "title": "GPS L1 C/A: how a weak signal finds you",
+      "category": "gnss",
+      "angles": [
+        "PRN codes",
+        "correlation",
+        "why indoors fails"
+      ]
+    },
+    {
+      "id": "gnss-trilateration",
+      "title": "From pseudoranges to a position fix",
+      "category": "gnss",
+      "angles": [
+        "4 satellites \u0026 clock bias",
+        "GDOP",
+        "least squares intuition"
+      ]
+    },
+    {
+      "id": "gnss-errors",
+      "title": "GNSS error sources: ionosphere, multipath, clocks",
+      "category": "gnss",
+      "angles": [
+        "error budgets",
+        "dual-frequency",
+        "urban canyons"
+      ]
+    },
+    {
+      "id": "rtk-basics",
+      "title": "RTK: centimeter GNSS with carrier phase",
+      "category": "gnss",
+      "angles": [
+        "base vs rover",
+        "integer ambiguity",
+        "fix length limits"
+      ]
+    },
+    {
+      "id": "gnss-assisted",
+      "title": "A-GNSS / assisted GPS and TTFF",
+      "category": "gnss",
+      "angles": [
+        "ephemeris download cost",
+        "hot/warm/cold start",
+        "SUPL-shaped idea"
+      ]
+    },
+    {
+      "id": "sbas",
+      "title": "SBAS (WAAS/EGNOS): corrections from the sky",
+      "category": "gnss",
+      "angles": [
+        "integrity",
+        "geo satellites",
+        "aviation heritage"
+      ]
+    },
+    {
+      "id": "nmea-ubx",
+      "title": "NMEA vs binary GNSS protocols (u-blox UBX)",
+      "category": "gnss",
+      "angles": [
+        "sentence parsing",
+        "binary efficiency",
+        "configuration gotchas"
+      ]
+    },
+    {
+      "id": "ins-fusion",
+      "title": "GNSS/INS fusion: when satellites disappear",
+      "category": "gnss",
+      "angles": [
+        "IMU drift",
+        "Kalman intuition",
+        "urban navigation"
+      ]
+    },
+    {
+      "id": "ext4-journal",
+      "title": "ext4 journaling modes and crash consistency",
+      "category": "storage",
+      "angles": [
+        "data=ordered",
+        "journal replay",
+        "fsync semantics"
+      ]
+    },
+    {
+      "id": "ssd-ftl",
+      "title": "SSD FTLs: mapping, GC, and write amplification",
+      "category": "storage",
+      "angles": [
+        "LBA to physical",
+        "over-provisioning",
+        "TRIM"
+      ]
+    },
+    {
+      "id": "b-trees-fs",
+      "title": "B-trees in filesystems (and why not always LSM)",
+      "category": "storage",
+      "angles": [
+        "extent trees",
+        "range queries",
+        "update costs"
+      ]
+    },
+    {
+      "id": "raid-basics",
+      "title": "RAID levels as tradeoffs, not magic",
+      "category": "storage",
+      "angles": [
+        "stripe vs mirror",
+        "write hole",
+        "rebuild risk"
+      ]
+    },
+    {
+      "id": "elf-loading",
+      "title": "ELF loading: program headers to process image",
+      "category": "toolchain",
+      "angles": [
+        "PT_LOAD",
+        "dynamic linker",
+        "relocations"
+      ]
+    },
+    {
+      "id": "calling-convention",
+      "title": "System V AMD64 calling convention in practice",
+      "category": "toolchain",
+      "angles": [
+        "arg registers",
+        "red zone",
+        "stack frames"
+      ]
+    },
+    {
+      "id": "linkers",
+      "title": "What linkers actually resolve (and LTO changes)",
+      "category": "toolchain",
+      "angles": [
+        "symbols \u0026 sections",
+        "COMDATs",
+        "why link times hurt"
+      ]
+    },
+    {
+      "id": "undefined-behavior",
+      "title": "Undefined behavior that systems programmers still hit",
+      "category": "toolchain",
+      "angles": [
+        "strict aliasing",
+        "shift UB",
+        "optimizers exploiting UB"
+      ]
+    },
+    {
+      "id": "aslr-dep",
+      "title": "ASLR, NX/DEP, and why exploits got harder (not impossible)",
+      "category": "security",
+      "angles": [
+        "entropy sources",
+        "info leaks",
+        "ROP intuition"
+      ]
+    },
+    {
+      "id": "seccomp",
+      "title": "seccomp-bpf: shrinking the kernel attack surface",
+      "category": "security",
+      "angles": [
+        "filter language",
+        "strict vs filter",
+        "container use"
+      ]
+    },
+    {
+      "id": "capabilities",
+      "title": "Linux capabilities vs root-all-or-nothing",
+      "category": "security",
+      "angles": [
+        "bounding set",
+        "file caps",
+        "common footguns"
+      ]
+    },
+    {
+      "id": "timekeeping",
+      "title": "Kernel timekeeping: clocks, timers, and CLOCK_MONOTONIC",
+      "category": "os",
+      "angles": [
+        "TSC",
+        "clocksource",
+        "sleep precision"
+      ]
+    },
+    {
+      "id": "signals",
+      "title": "UNIX signals: async, messy, still essential",
+      "category": "os",
+      "angles": [
+        "async-signal-safety",
+        "signalfd",
+        "why handlers should be tiny"
+      ]
+    },
+    {
+      "id": "shared-memory",
+      "title": "POSIX shared memory and memory-mapped IPC",
+      "category": "os",
+      "angles": [
+        "shm_open",
+        "sync with atomics",
+        "vs sockets"
+      ]
+    },
+    {
+      "id": "backpressure",
+      "title": "Backpressure in systems: queues, drops, and load shedding",
+      "category": "systems",
+      "angles": [
+        "bounded queues",
+        "latency vs throughput",
+        "overload control"
+      ]
+    },
+    {
+      "id": "observability-ebpf",
+      "title": "Tracing production systems with eBPF",
+      "category": "systems",
+      "angles": [
+        "kprobes/uprobes",
+        "overhead",
+        "what not to trace"
+      ]
+    },
+    {
+      "id": "lock-contention",
+      "title": "Diagnosing lock contention like a systems engineer",
+      "category": "systems",
+      "angles": [
+        "perf",
+        "critical section size",
+        "sharding locks"
+      ]
+    }
+  ]
+}

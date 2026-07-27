@@ -59,18 +59,47 @@ Env vars (or `.env` in cwd). See `.env.example`.
 | `TARGET_WORDS_MIN` | `700` | Prompt length guidance |
 | `TARGET_WORDS_MAX` | `1200` | Prompt length guidance |
 | `HISTORY_PATH` | `data/history.json` | Avoids recent topic repeats |
+| `TOPICS_PATH` | (embedded) | Custom topics JSON; empty uses built-in |
 | `DRY_RUN` | `false` | Generate but do not send |
+
+## Topics catalog
+
+Topics live in JSON (`internal/topics/topics.json`), embedded into the binary as the default.
+
+Shape:
+
+```json
+{
+  "topics": [
+    {
+      "id": "buddy-allocator",
+      "title": "Buddy memory allocator internals",
+      "category": "memory",
+      "angles": ["block splitting/coalescing", "orders and freelists"]
+    }
+  ]
+}
+```
+
+To use your own list without rebuilding:
+
+```bash
+cp internal/topics/topics.json ./topics.json
+# edit: add / remove / tweak topics
+export TOPICS_PATH=./topics.json
+./bin/systems-daily topics
+```
 
 ## Layout
 
 ```
-cmd/systems-daily/ CLI (cobra)
-internal/config/   env config
-internal/topics/   curated catalog
-internal/llm/      OpenAI-compatible client
-internal/content/  prompts + article shaping
-internal/email/    SMTP
-internal/history/  sent topic log
-internal/schedule/ daily runner
-internal/app/      once pipeline
+cmd/systems-daily/          CLI (cobra)
+internal/topics/topics.json default catalog (editable source)
+internal/config/            env config
+internal/llm/               OpenAI-compatible client
+internal/content/           prompts + article shaping
+internal/email/             SMTP
+internal/history/           sent topic log
+internal/schedule/          daily runner
+internal/app/               once pipeline
 ```
