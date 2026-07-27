@@ -1,0 +1,6 @@
+.env
+data/
+*.tmp
+/systems-daily
+bin/
+.DS_Store
