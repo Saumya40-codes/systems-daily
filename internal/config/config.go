@@ -33,7 +33,8 @@ type Config struct {
 	TargetWordsMin int
 	TargetWordsMax int
 	HistoryPath    string
-	HistoryWindow  int // don't reuse a topic within N days
+	HistoryWindow  int    // don't reuse a topic within N days
+	TopicsPath     string // empty = embedded default catalog
 
 	// Behavior
 	DryRun bool
@@ -58,6 +59,7 @@ func Load() (*Config, error) {
 		TargetWordsMax: envInt("TARGET_WORDS_MAX", 1200),
 		HistoryPath:    env("HISTORY_PATH", "data/history.json"),
 		HistoryWindow:  envInt("HISTORY_WINDOW_DAYS", 60),
+		TopicsPath:     env("TOPICS_PATH", ""),
 		DryRun:         envBool("DRY_RUN", false),
 	}
 

@@ -23,6 +23,11 @@ type Options struct {
 
 // RunOnce picks a topic, generates a write-up, and emails (or prints) it.
 func RunOnce(ctx context.Context, cfg *config.Config, opt Options) error {
+	catalog, err := topics.Load(cfg.TopicsPath)
+	if err != nil {
+		return fmt.Errorf("topics: %w", err)
+	}
+
 	hist, err := history.Open(cfg.HistoryPath)
 	if err != nil {
 		return fmt.Errorf("history: %w", err)
@@ -30,13 +35,13 @@ func RunOnce(ctx context.Context, cfg *config.Config, opt Options) error {
 
 	var topic topics.Topic
 	if opt.TopicID != "" {
-		topic, err = topics.ByID(opt.TopicID)
+		topic, err = catalog.ByID(opt.TopicID)
 		if err != nil {
 			return err
 		}
 	} else {
 		recent := hist.RecentIDs(cfg.HistoryWindow)
-		topic, err = topics.Pick(recent, nil)
+		topic, err = catalog.Pick(recent, nil)
 		if err != nil {
 			return err
 		}
