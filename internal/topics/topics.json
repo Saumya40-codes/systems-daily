@@ -541,6 +541,46 @@
       ]
     },
     {
+      "id": "llvm-ir",
+      "title": "LLVM IR: SSA form and the compiler's intermediate language",
+      "category": "toolchain",
+      "angles": [
+        "phi nodes \u0026 dominance",
+        "typed vs opaque pointers",
+        "what IR deliberately hides"
+      ]
+    },
+    {
+      "id": "llvm-passes",
+      "title": "LLVM middle-end passes: how IR actually gets faster",
+      "category": "toolchain",
+      "angles": [
+        "pass manager intuition",
+        "inlining \u0026 SROA",
+        "why pass order matters"
+      ]
+    },
+    {
+      "id": "llvm-codegen",
+      "title": "LLVM codegen: from IR to machine instructions",
+      "category": "toolchain",
+      "angles": [
+        "instruction selection",
+        "register allocation",
+        "calling convention lowering"
+      ]
+    },
+    {
+      "id": "llvm-lto",
+      "title": "LTO and ThinLTO: whole-program opts without full link pain",
+      "category": "toolchain",
+      "angles": [
+        "bitcode at link time",
+        "ThinLTO summaries",
+        "when LTO is worth the compile cost"
+      ]
+    },
+    {
       "id": "aslr-dep",
       "title": "ASLR, NX/DEP, and why exploits got harder (not impossible)",
       "category": "security",
