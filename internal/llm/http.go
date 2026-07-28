@@ -11,24 +11,40 @@ import (
 	"time"
 )
 
-// Client talks to any OpenAI-compatible Chat Completions API
+// HTTPClient talks to any OpenAI-compatible Chat Completions API
 // (Ollama, LM Studio, vLLM, OpenRouter, Groq, xAI, etc.).
-type Client struct {
+type HTTPClient struct {
 	BaseURL    string
 	APIKey     string
 	Model      string
 	HTTPClient *http.Client
 }
 
-func New(baseURL, apiKey, model string) *Client {
-	return &Client{
+// NewHTTP builds an HTTP completer. Prefer NewCompleter from app code.
+func NewHTTP(baseURL, apiKey, model string) *HTTPClient {
+	return &HTTPClient{
 		BaseURL: strings.TrimRight(baseURL, "/"),
 		APIKey:  apiKey,
 		Model:   model,
 		HTTPClient: &http.Client{
-			Timeout: 5 * time.Minute, // local models can be slow
+			Timeout: 5 * time.Minute,
 		},
 	}
+}
+
+// New is an alias for NewHTTP (keeps older call sites compiling if any).
+func New(baseURL, apiKey, model string) *HTTPClient {
+	return NewHTTP(baseURL, apiKey, model)
+}
+
+// Client is a deprecated name for HTTPClient.
+type Client = HTTPClient
+
+func (c *HTTPClient) Label() string {
+	if c.Model != "" {
+		return c.Model
+	}
+	return "http"
 }
 
 type message struct {
@@ -53,7 +69,7 @@ type chatResponse struct {
 }
 
 // Chat sends a single-turn (system + user) completion and returns assistant text.
-func (c *Client) Chat(ctx context.Context, system, user string) (string, error) {
+func (c *HTTPClient) Chat(ctx context.Context, system, user string) (string, error) {
 	if c.Model == "" {
 		return "", fmt.Errorf("LLM model is empty (set LLM_MODEL)")
 	}
@@ -116,5 +132,5 @@ func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s
 	}
-	return s[:n] + "…"
+	return s[:n] + "..."
 }
