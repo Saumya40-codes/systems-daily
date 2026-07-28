@@ -10,10 +10,15 @@ import (
 
 // Config holds runtime settings. Prefer env vars; optional .env is loaded by main.
 type Config struct {
-	// LLM (OpenAI-compatible: Ollama, LM Studio, OpenRouter, xAI, etc.)
+	// LLM
+	LLMProvider string // http (default) | cli
+	// HTTP (OpenAI-compatible: Ollama, LM Studio, OpenRouter, Groq, xAI, ...)
 	LLMBaseURL string
 	LLMAPIKey  string
 	LLMModel   string
+	// CLI (local command; stdout = article). See internal/llm CLI protocol.
+	LLMCLICmd  string
+	LLMCLIArgs string // space-separated extra args, e.g. "-p"
 
 	// Email
 	SMTPHost     string
@@ -36,15 +41,26 @@ type Config struct {
 	HistoryWindow  int    // don't reuse a topic within N days
 	TopicsPath     string // empty = embedded default catalog
 
+	// Static site (primary reading surface)
+	SiteOutDir     string // web root written each run, e.g. site/public
+	SiteBaseURL    string // public origin for email links, e.g. https://....vercel.app
+	SiteWindowDays int    // dated pages kept (including today); default 7
+
+	// Optional PDF attach (site is primary; PDF off by default)
+	AttachPDF bool
+
 	// Behavior
 	DryRun bool
 }
 
 func Load() (*Config, error) {
 	cfg := &Config{
+		LLMProvider:    env("LLM_PROVIDER", "http"),
 		LLMBaseURL:     env("LLM_BASE_URL", "http://localhost:11434/v1"),
 		LLMAPIKey:      env("LLM_API_KEY", "ollama"), // Ollama ignores key but client may require one
 		LLMModel:       env("LLM_MODEL", "llama3.2"),
+		LLMCLICmd:      env("LLM_CLI_CMD", ""),
+		LLMCLIArgs:     env("LLM_CLI_ARGS", ""),
 		SMTPHost:       env("SMTP_HOST", ""),
 		SMTPPort:       envInt("SMTP_PORT", 587),
 		SMTPUser:       env("SMTP_USER", ""),
@@ -60,6 +76,10 @@ func Load() (*Config, error) {
 		HistoryPath:    env("HISTORY_PATH", "data/history.json"),
 		HistoryWindow:  envInt("HISTORY_WINDOW_DAYS", 60),
 		TopicsPath:     env("TOPICS_PATH", ""),
+		SiteOutDir:     env("SITE_OUT_DIR", "site/public"),
+		SiteBaseURL:    env("SITE_BASE_URL", ""),
+		SiteWindowDays: envInt("SITE_WINDOW_DAYS", 7),
+		AttachPDF:      envBool("ATTACH_PDF", false),
 		DryRun:         envBool("DRY_RUN", false),
 	}
 
@@ -70,6 +90,14 @@ func Load() (*Config, error) {
 		if _, err := time.LoadLocation(cfg.Timezone); err != nil {
 			return nil, fmt.Errorf("invalid TIMEZONE %q: %w", cfg.Timezone, err)
 		}
+	}
+	if cfg.SiteWindowDays < 1 {
+		return nil, fmt.Errorf("SITE_WINDOW_DAYS must be >= 1, got %d", cfg.SiteWindowDays)
+	}
+	switch strings.ToLower(strings.TrimSpace(cfg.LLMProvider)) {
+	case "", "http", "openai", "api", "cli", "command", "exec":
+	default:
+		return nil, fmt.Errorf("LLM_PROVIDER must be http or cli, got %q", cfg.LLMProvider)
 	}
 	return cfg, nil
 }

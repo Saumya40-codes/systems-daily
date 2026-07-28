@@ -6,8 +6,6 @@ import (
 	"time"
 )
 
-// Daily runs fn once per day at the given wall-clock time (HH:MM) in loc.
-// It runs fn immediately if fireNow is true, then waits for the next occurrence.
 func Daily(ctx context.Context, at string, loc *time.Location, fireNow bool, fn func(context.Context) error) error {
 	if loc == nil {
 		loc = time.Local

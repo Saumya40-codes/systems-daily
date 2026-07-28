@@ -2,6 +2,7 @@ package email
 
 import (
 	"crypto/tls"
+	"encoding/base64"
 	"fmt"
 	"net"
 	"net/smtp"
@@ -9,12 +10,20 @@ import (
 	"time"
 )
 
-// Message is a simple plain-text email.
+// Attachment is a file attached to the message.
+type Attachment struct {
+	Filename    string
+	ContentType string
+	Data        []byte
+}
+
+// Message is an email (plain body + optional attachments).
 type Message struct {
-	From    string
-	To      []string
-	Subject string
-	Body    string
+	From        string
+	To          []string
+	Subject     string
+	Body        string // text/plain
+	Attachments []Attachment
 }
 
 // SMTPConfig configures the outbound mail path.
@@ -41,7 +50,7 @@ func Send(cfg SMTPConfig, msg Message) error {
 
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 	toHeader := strings.Join(msg.To, ", ")
-	raw := buildMIME(msg.From, toHeader, msg.Subject, msg.Body)
+	raw := buildMIME(msg.From, toHeader, msg.Subject, msg.Body, msg.Attachments)
 
 	// Port 465: implicit TLS
 	if cfg.Port == 465 {
@@ -147,29 +156,79 @@ func sendImplicitTLS(cfg SMTPConfig, addr string, msg Message, raw []byte) error
 	return client.Quit()
 }
 
-func buildMIME(from, to, subject, body string) []byte {
-	// Keep headers simple ASCII; fold subject if needed later
+func buildMIME(from, to, subject, body string, atts []Attachment) []byte {
 	var b strings.Builder
 	fmt.Fprintf(&b, "From: %s\r\n", from)
 	fmt.Fprintf(&b, "To: %s\r\n", to)
 	fmt.Fprintf(&b, "Subject: %s\r\n", sanitizeHeader(subject))
 	fmt.Fprintf(&b, "MIME-Version: 1.0\r\n")
-	fmt.Fprintf(&b, "Content-Type: text/plain; charset=UTF-8\r\n")
-	fmt.Fprintf(&b, "Content-Transfer-Encoding: 8bit\r\n")
 	fmt.Fprintf(&b, "Date: %s\r\n", time.Now().Format(time.RFC1123Z))
-	fmt.Fprintf(&b, "\r\n")
-	// Normalize body newlines to CRLF for SMTP
+
 	body = strings.ReplaceAll(body, "\r\n", "\n")
 	body = strings.ReplaceAll(body, "\n", "\r\n")
+	if !strings.HasSuffix(body, "\r\n") {
+		body += "\r\n"
+	}
+
+	if len(atts) == 0 {
+		fmt.Fprintf(&b, "Content-Type: text/plain; charset=UTF-8\r\n")
+		fmt.Fprintf(&b, "Content-Transfer-Encoding: 8bit\r\n")
+		fmt.Fprintf(&b, "\r\n")
+		b.WriteString(body)
+		return []byte(b.String())
+	}
+
+	boundary := fmt.Sprintf("systems-daily-%d", time.Now().UnixNano())
+	fmt.Fprintf(&b, "Content-Type: multipart/mixed; boundary=%s\r\n", boundary)
+	fmt.Fprintf(&b, "\r\n")
+	fmt.Fprintf(&b, "--%s\r\n", boundary)
+	fmt.Fprintf(&b, "Content-Type: text/plain; charset=UTF-8\r\n")
+	fmt.Fprintf(&b, "Content-Transfer-Encoding: 8bit\r\n")
+	fmt.Fprintf(&b, "\r\n")
 	b.WriteString(body)
 	if !strings.HasSuffix(body, "\r\n") {
 		b.WriteString("\r\n")
 	}
+
+	for _, att := range atts {
+		ct := att.ContentType
+		if ct == "" {
+			ct = "application/octet-stream"
+		}
+		name := att.Filename
+		if name == "" {
+			name = "attachment"
+		}
+		fmt.Fprintf(&b, "--%s\r\n", boundary)
+		fmt.Fprintf(&b, "Content-Type: %s; name=\"%s\"\r\n", ct, sanitizeHeader(name))
+		fmt.Fprintf(&b, "Content-Disposition: attachment; filename=\"%s\"\r\n", sanitizeHeader(name))
+		fmt.Fprintf(&b, "Content-Transfer-Encoding: base64\r\n")
+		fmt.Fprintf(&b, "\r\n")
+		b.WriteString(wrapBase64(base64.StdEncoding.EncodeToString(att.Data)))
+		b.WriteString("\r\n")
+	}
+	fmt.Fprintf(&b, "--%s--\r\n", boundary)
 	return []byte(b.String())
+}
+
+func wrapBase64(s string) string {
+	const col = 76
+	var b strings.Builder
+	for len(s) > col {
+		b.WriteString(s[:col])
+		b.WriteString("\r\n")
+		s = s[col:]
+	}
+	if len(s) > 0 {
+		b.WriteString(s)
+		b.WriteString("\r\n")
+	}
+	return b.String()
 }
 
 func sanitizeHeader(s string) string {
 	s = strings.ReplaceAll(s, "\r", "")
 	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "\"", "'")
 	return strings.TrimSpace(s)
 }

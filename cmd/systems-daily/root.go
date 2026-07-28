@@ -22,8 +22,8 @@ func execute() error {
 	root := &cobra.Command{
 		Use:   "systems-daily",
 		Short: "Daily systems deep-dives to your inbox",
-		Long: `Generate a medium-length systems engineering write-up each day
-(memory, OS, GNSS, embedded, etc.) via an OpenAI-compatible LLM and email it.`,
+		Long: `Generate a systems write-up each day, publish a minimal static site,
+and email a short link notify (optional PDF attach).`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
@@ -40,7 +40,7 @@ func onceCmd() *cobra.Command {
 	var topicID string
 	cmd := &cobra.Command{
 		Use:   "once",
-		Short: "Generate and email one write-up now",
+		Short: "Generate site + notify email now",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := config.Load()
 			if err != nil {
@@ -59,7 +59,7 @@ func previewCmd() *cobra.Command {
 	var topicID string
 	cmd := &cobra.Command{
 		Use:   "preview",
-		Short: "Generate and print to stdout (no email)",
+		Short: "Generate site (and optional PDF); no email",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := config.Load()
 			if err != nil {
@@ -82,7 +82,7 @@ func serveCmd() *cobra.Command {
 	var now bool
 	cmd := &cobra.Command{
 		Use:   "serve",
-		Short: "Run forever; send daily at SEND_AT (default 09:00)",
+		Short: "Run forever; publish + notify daily at SEND_AT",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := config.Load()
 			if err != nil {
