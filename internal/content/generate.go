@@ -22,6 +22,7 @@ var modelSourcesHeadingRE = regexp.MustCompile(`(?im)<h2[^>]*>\s*sources\s*</h2>
 var htmlTagRE = regexp.MustCompile(`(?is)</?(?:h[1-6]|p|pre|code|blockquote|ul|ol|li|table|thead|tbody|tr|th|td|strong|em|b|i|span|div|section|article|br|hr|svg|g|path|rect|circle|line|polyline|polygon|text|defs|marker)\b[^>]*>|<!--.*?-->`)
 var htmlCodeBlockRE = regexp.MustCompile(`(?is)<(?:pre|code)\b[^>]*>.*?</(?:pre|code)>`)
 var nonProseBlockRE = regexp.MustCompile(`(?is)<(?:script|style|iframe|object|svg)\b[^>]*>.*?</(?:script|style|iframe|object|svg)>|<(?:meta|embed)\b[^>]*>`)
+var unclosedNonProseRE = regexp.MustCompile(`(?is)<(?:script|style|iframe|object|svg)\b[^>]*>.*$`)
 var fencedCodeRE = regexp.MustCompile("(?s)```.*?```")
 var inlineCodeRE = regexp.MustCompile("`[^`]*`")
 var h2RE = regexp.MustCompile(`(?im)<h2\b[^>]*>.*?</h2>|^##\s+\S`)
@@ -96,7 +97,7 @@ func (g *Generator) Generate(ctx context.Context, topic topics.Topic) (*Article,
 func buildArticle(g *Generator, topic topics.Topic, draft, body string, report QualityReport, reviewReasons []string) *Article {
 	return &Article{
 		Topic: topic, Subject: buildSubject(topic, body), Body: body,
-		WordCount: wordCount(body), Model: g.LLM.Label(), Generated: time.Now().UTC(),
+		WordCount: wordCount(visibleArticleBody(body)), Model: g.LLM.Label(), Generated: time.Now().UTC(),
 		Pipeline: PipelineVersion, SourceIDs: report.CitationIDs,
 		Draft: draft, ReviewPasses: 1, ReviewReasons: reviewReasons, Quality: report,
 	}
@@ -116,17 +117,19 @@ func (g *Generator) chat(ctx context.Context, stage, system, user string) (strin
 func validateArticle(body string, sources []topics.Source, minW, maxW int) QualityReport {
 	report := QualityReport{Passed: true}
 	fail := func(msg string) { report.Passed = false; report.Checks = append(report.Checks, msg) }
-	wc := wordCount(body)
+	visibleBody := visibleArticleBody(body)
+	visibleStructure := htmlCodeBlockRE.ReplaceAllString(fencedCodeRE.ReplaceAllString(visibleBody, " "), " ")
+	wc := wordCount(visibleBody)
 	if wc < minW {
 		fail(fmt.Sprintf("too short: %d words, minimum %d", wc, minW))
 	}
 	if wc > maxW {
 		fail(fmt.Sprintf("too long: %d words, maximum %d", wc, maxW))
 	}
-	if firstTitle(body) == "" {
+	if firstTitle(visibleStructure) == "" {
 		fail("missing H1 title")
 	}
-	if len(h2RE.FindAllString(body, -1)) < 2 {
+	if len(h2RE.FindAllString(visibleStructure, -1)) < 2 {
 		fail("fewer than two topic-specific H2 headings")
 	}
 	if editorialLeakRE.MatchString(body) {
@@ -143,7 +146,7 @@ func validateArticle(body string, sources []topics.Source, minW, maxW int) Quali
 		known[s.ID] = struct{}{}
 	}
 	seen := map[string]struct{}{}
-	visibleProse := nonProseBlockRE.ReplaceAllString(body, " ")
+	visibleProse := visibleBody
 	visibleProse = htmlCodeBlockRE.ReplaceAllString(visibleProse, " ")
 	visibleProse = stripTags(visibleProse)
 	visibleProse = inlineCodeRE.ReplaceAllString(fencedCodeRE.ReplaceAllString(visibleProse, " "), " ")
@@ -175,6 +178,10 @@ func validateArticle(body string, sources []topics.Source, minW, maxW int) Quali
 		report.Checks = append(report.Checks, "word count, title, and citations valid")
 	}
 	return report
+}
+
+func visibleArticleBody(body string) string {
+	return unclosedNonProseRE.ReplaceAllString(nonProseBlockRE.ReplaceAllString(body, " "), " ")
 }
 
 // SaveArtifact atomically archives the sources, intermediate stages, final

@@ -110,6 +110,26 @@ func TestQualityGateRejectsEditorialLeakAndCitationNoise(t *testing.T) {
 	}
 }
 
+func TestQualityGateIgnoresHiddenLengthAndHeadings(t *testing.T) {
+	for _, tc := range []struct {
+		body      string
+		wantShort bool
+	}{
+		{"# Final\n\none [[official]]<script><h2>Hidden one</h2><h2>Hidden two</h2> two three four five</script>", true},
+		{"# Final\n\none [[official]]<script><h2>Hidden one</h2><h2>Hidden two</h2> two three four five", true},
+		{"# Final\n\none [[official]]\n```markdown\n## Hidden one\n## Hidden two\ntwo three four five\n```", false},
+	} {
+		report := validateArticle(tc.body, sourcedTopic().Sources, 5, 20)
+		checks := strings.Join(report.Checks, "; ")
+		if !strings.Contains(checks, "fewer than two") {
+			t.Fatalf("hidden headings passed for %q: %+v", tc.body, report)
+		}
+		if tc.wantShort && !strings.Contains(checks, "too short") {
+			t.Fatalf("hidden words passed for %q: %+v", tc.body, report)
+		}
+	}
+}
+
 func TestQualityGateRejectsSourceCommentary(t *testing.T) {
 	body := "# Final\n\n## Path\n\none two [[official]].\n\n## Limit\n\nThe sources establish the mechanism."
 	report := validateArticle(body, sourcedTopic().Sources, 1, 30)

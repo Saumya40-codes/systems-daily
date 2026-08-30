@@ -25,9 +25,21 @@ A short note.
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"<!DOCTYPE html>", "systems-daily", "embedded", "Content-Security-Policy", "<pre", "theme-toggle", "data-theme", "script-src 'unsafe-inline'"} {
+	for _, want := range []string{"<!DOCTYPE html>", "systems-daily", "embedded", "Content-Security-Policy", "<pre", "theme-toggle", "data-theme", "script-src 'sha256-"} {
 		if !strings.Contains(htmlDoc, want) {
 			t.Errorf("missing %q", want)
+		}
+	}
+}
+
+func TestRenderHTMLSanitizesRawHTMLInMarkdown(t *testing.T) {
+	doc, err := RenderHTML(Page{Title: "Safe", Date: time.Now(), BodyMarkdown: "# Safe\n\n<script>alert(1)</script>\n\n<p onclick=\"alert(2)\">body</p>"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []string{"alert(1)", "onclick", "script-src 'unsafe-inline'"} {
+		if strings.Contains(doc, bad) {
+			t.Fatalf("unsafe markdown content survived: %q", bad)
 		}
 	}
 }
@@ -167,5 +179,8 @@ func TestFilterUselessSVG(t *testing.T) {
 	good := `<svg viewBox="0 0 200 40"><rect x="0" y="10" width="40" height="20"/><line x1="40" y1="20" x2="80" y2="20"/><rect x="80" y="10" width="40" height="20"/><text x="20" y="25">open</text><text x="100" y="25">closed</text></svg>`
 	if !isUsefulSVG(good) {
 		t.Fatal("expected useful")
+	}
+	if got := sanitizeFragment(good); !strings.Contains(got, "<svg") || !strings.Contains(strings.ToLower(got), "viewbox") {
+		t.Fatalf("useful svg was not preserved: %s", got)
 	}
 }

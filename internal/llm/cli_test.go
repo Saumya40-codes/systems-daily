@@ -106,9 +106,11 @@ func TestSafeCLIEnvRemovesApplicationSecrets(t *testing.T) {
 		"SMTP_PASS=mail-secret",
 		"SMTP_USER=user@example.com",
 		"SYSTEMS_DAILY_USER=old-prompt",
+		"SYSTEMS_DAILY_AGENT_PROMPT_MODE=arg",
+		"SYSTEMS_DAILY_AGENT_CWD=/tmp/agent",
 	})
 	joined := strings.Join(got, "\n")
-	for _, want := range []string{"PATH=/bin", "HOME=/home/test", "OPENAI_API_KEY=codex-auth"} {
+	for _, want := range []string{"PATH=/bin", "HOME=/home/test", "OPENAI_API_KEY=codex-auth", "SYSTEMS_DAILY_AGENT_PROMPT_MODE=arg", "SYSTEMS_DAILY_AGENT_CWD=/tmp/agent"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("missing %q from %q", want, joined)
 		}

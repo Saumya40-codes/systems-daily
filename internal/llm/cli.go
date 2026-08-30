@@ -93,7 +93,8 @@ func safeCLIEnv(environ []string) []string {
 	out := make([]string, 0, len(environ))
 	for _, entry := range environ {
 		key, _, _ := strings.Cut(entry, "=")
-		if strings.HasPrefix(key, "SMTP_") || key == "LLM_API_KEY" || strings.HasPrefix(key, "SYSTEMS_DAILY_") {
+		wrapperControl := key == "SYSTEMS_DAILY_AGENT_PROMPT_MODE" || key == "SYSTEMS_DAILY_AGENT_CWD"
+		if strings.HasPrefix(key, "SMTP_") || key == "LLM_API_KEY" || strings.HasPrefix(key, "SYSTEMS_DAILY_") && !wrapperControl {
 			continue
 		}
 		out = append(out, entry)
