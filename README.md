@@ -11,7 +11,7 @@ Uses an LLM via **HTTP** (OpenAI-compatible: Groq, Ollama, OpenRouter, xAI, ...)
 | `http` (default) | `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` | Chat Completions API |
 | `cli` | `LLM_CLI_CMD`, optional `LLM_CLI_ARGS` | Runs a command; stdin = `### SYSTEM` / `### USER`; also sets `SYSTEMS_DAILY_SYSTEM` / `SYSTEMS_DAILY_USER`. **Does not** open claude.ai in a browser. |
 
-Each article uses four completions: evidence brief, draft, technical critique, and final revision. The included stub exercises that protocol without a live model:
+Each article normally uses two completions: a grounded draft and a technical review/rewrite. A third repair call runs only when deterministic quality checks reject the reviewed article. The included stub exercises that protocol without a live model:
 
 ```bash
 LLM_PROVIDER=cli LLM_CLI_CMD=./scripts/example-llm-cli.sh ./bin/systems-daily preview --topic ebpf-xdp
@@ -116,7 +116,7 @@ Env vars (or `.env` in cwd). See `.env.example`.
 | `ATTACH_PDF` | `false` | Also attach PDF to email |
 | `HISTORY_PATH` | `data/history.json` | Avoids recent topic repeats |
 | `HISTORY_WINDOW_DAYS` | `6` | Do not repeat a ready topic inside this window |
-| `ARTIFACT_DIR` | `data/articles` | JSON provenance: sources, brief, draft, critique, final, model, and quality report |
+| `ARTIFACT_DIR` | `data/articles` | JSON provenance: sources, draft, reviewed final, model, and quality report |
 | `TOPICS_PATH` | (embedded) | Custom topics JSON |
 | `DRY_RUN` | `false` | Generate but do not send |
 

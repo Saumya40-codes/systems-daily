@@ -751,13 +751,13 @@
           "id": "sqlite-wal",
           "title": "SQLite documentation: Write-Ahead Logging",
           "url": "https://sqlite.org/wal.html",
-          "evidence": "A WAL reader fixes an end mark at the last valid commit visible when its transaction starts. A checkpoint copies frames back to the database but must stop before passing any active reader's end mark. Overlapping long-lived readers can therefore prevent a checkpoint from completing and resetting the WAL. SQLite defaults to an automatic checkpoint around 1000 WAL pages, and WAL mode permits concurrent readers with one writer."
+          "evidence": "A WAL reader fixes an end mark at the last valid commit visible when its transaction starts. For a page lookup it uses the last frame for that page at or before the end mark. A checkpoint copies frames back to the database but must stop when it reaches content past any active reader's end mark. Overlapping long-lived readers can therefore prevent a checkpoint from completing and resetting the WAL. SQLite defaults to an automatic checkpoint around 1000 WAL pages and permits concurrent readers with one writer. PASSIVE checkpoints do as much work as possible without interfering with concurrent connections and may not complete; FULL and RESTART modes try harder and may wait for readers or writers."
         },
         {
           "id": "sqlite-wal-format",
           "title": "SQLite documentation: WAL-mode File Format",
           "url": "https://sqlite.org/walformat.html",
-          "evidence": "The wal-index is shared memory used to locate the newest acceptable WAL frame for a page without scanning the full WAL. It also coordinates readers, writers, recovery, and checkpoints. Read marks record boundaries used by readers and checkpointers; the WAL and wal-index are stateful parts of the protocol, not merely an append-only log plus a cache."
+          "evidence": "The wal-index is shared memory used to locate the newest acceptable WAL frame for a page without scanning the full WAL. mxFrame is the last valid committed WAL frame; nBackfill counts frames already copied into the database. A reset is possible when nBackfill equals mxFrame and no connection holds WAL_READ_LOCK(N) for N greater than zero. The header has five read marks. A reader holding WAL_READ_LOCK(N) promises how it will obtain pages relative to read-mark[N], and a checkpoint must not backfill more than that read mark. For N greater than zero, that reader may still use WAL content beyond read-mark[N] up to its transaction's mxFrame, so the read mark is a checkpoint coordination boundary and must not be presented as identical to the reader's high-level end mark. WAL_CKPT_LOCK serializes checkpoints while WAL_WRITE_LOCK serializes appends and resets."
         }
       ]
     },

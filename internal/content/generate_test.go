@@ -38,23 +38,21 @@ func sourcedTopic() topics.Topic {
 
 func TestGenerateRunsEditorialStagesAndValidatesFinal(t *testing.T) {
 	q := &queuedCompleter{responses: []string{
-		"# Evidence brief\n\nUse the early hook [[official]].",
 		"# Draft\n\none two three four five [[official]]",
-		"# Technical critique\n\nExplain the avoided allocation.",
-		"# Final\n\none two three four five six [[official]]",
+		"# Final\n\n## Packet path\n\none two [[official]]\n\n## Tradeoff\n\nthree four five six",
 	}}
 	g := Generator{LLM: q, TargetWordsMin: 5, TargetWordsMax: 20}
 	a, err := g.Generate(context.Background(), sourcedTopic())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(q.prompts) != 4 {
-		t.Fatalf("got %d calls, want 4", len(q.prompts))
+	if len(q.prompts) != 2 {
+		t.Fatalf("got %d calls, want 2", len(q.prompts))
 	}
-	if !strings.Contains(q.prompts[1], q.responses[0]) || !strings.Contains(q.prompts[3], q.responses[2]) {
-		t.Fatal("later stages did not receive earlier editorial work")
+	if !strings.Contains(q.prompts[1], q.responses[0]) {
+		t.Fatal("review did not receive the draft")
 	}
-	if a.Pipeline != PipelineVersion || a.Model != "test-model" || len(a.SourceIDs) != 1 || !a.Quality.Passed {
+	if a.Pipeline != PipelineVersion || a.Model != "test-model" || a.ReviewPasses != 1 || len(a.SourceIDs) != 1 || !a.Quality.Passed {
 		t.Fatalf("unexpected article provenance: %+v", a)
 	}
 }
@@ -71,16 +69,59 @@ func TestGenerateRejectsUnsourcedTopicBeforeCallingLLM(t *testing.T) {
 }
 
 func TestGenerateRejectsUnknownCitation(t *testing.T) {
-	q := &queuedCompleter{responses: []string{"# Brief", "# Draft", "# Critique", "# Final\n\none two three four [[invented]]"}}
+	bad := "# Final\n\n## Path\n\none two [[invented]]\n\n## Cost\n\nthree four"
+	q := &queuedCompleter{responses: []string{"# Draft", bad, bad}}
 	_, err := (&Generator{LLM: q, TargetWordsMin: 3, TargetWordsMax: 20}).Generate(context.Background(), sourcedTopic())
 	if err == nil || !strings.Contains(err.Error(), "unknown source marker") {
 		t.Fatalf("got %v", err)
 	}
 }
 
+func TestGenerateRepairsFailedQualityGateOnce(t *testing.T) {
+	q := &queuedCompleter{responses: []string{
+		"# Draft",
+		"# Final\n\none two [[official]]",
+		"# Final\n\n## Path\n\none two [[official]]\n\n## Limit\n\nthree four",
+	}}
+	a, err := (&Generator{LLM: q, TargetWordsMin: 3, TargetWordsMax: 20}).Generate(context.Background(), sourcedTopic())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(q.prompts) != 3 || len(a.RepairReasons) == 0 || !strings.Contains(q.prompts[2], "FAILED CHECKS") {
+		t.Fatalf("repair provenance missing: calls=%d article=%+v", len(q.prompts), a)
+	}
+}
+
 func TestQualityGateRejectsModelAuthoredLinks(t *testing.T) {
 	report := validateArticle("# Final\n\none two [[official]] https://invented.example", sourcedTopic().Sources, 1, 20)
 	if report.Passed || !strings.Contains(strings.Join(report.Checks, "; "), "model-authored links") {
+		t.Fatalf("unexpected report: %+v", report)
+	}
+}
+
+func TestQualityGateRejectsEditorialLeakAndCitationNoise(t *testing.T) {
+	body := "# Final\n\n## Path\n\nThe supplied sources say one [[official]] two [[official]] three [[official]].\n\n## Cost\n\nfour."
+	report := validateArticle(body, sourcedTopic().Sources, 1, 30)
+	checks := strings.Join(report.Checks, "; ")
+	for _, want := range []string{"editorial process", "citation density"} {
+		if !strings.Contains(checks, want) {
+			t.Fatalf("missing %q in %+v", want, report)
+		}
+	}
+}
+
+func TestQualityGateRejectsSourceCommentary(t *testing.T) {
+	body := "# Final\n\n## Path\n\none two [[official]].\n\n## Limit\n\nThe sources establish the mechanism."
+	report := validateArticle(body, sourcedTopic().Sources, 1, 30)
+	if report.Passed || !strings.Contains(strings.Join(report.Checks, "; "), "editorial process") {
+		t.Fatalf("unexpected report: %+v", report)
+	}
+}
+
+func TestQualityGateRejectsDocumentationFraming(t *testing.T) {
+	body := "# Final\n\n## Path\n\none two [[official]].\n\n## Limit\n\nThe documented mechanism does not establish a fixed cost."
+	report := validateArticle(body, sourcedTopic().Sources, 1, 30)
+	if report.Passed || !strings.Contains(strings.Join(report.Checks, "; "), "editorial process") {
 		t.Fatalf("unexpected report: %+v", report)
 	}
 }
@@ -111,9 +152,9 @@ func TestQualityGateIgnoresHiddenAndCodeCitations(t *testing.T) {
 }
 
 func TestGenerateReportsStageFailure(t *testing.T) {
-	q := &queuedCompleter{responses: []string{"# Brief", "unused"}, errAt: 2}
+	q := &queuedCompleter{responses: []string{"# Draft", "unused"}, errAt: 2}
 	_, err := (&Generator{LLM: q, TargetWordsMin: 1, TargetWordsMax: 20}).Generate(context.Background(), sourcedTopic())
-	if err == nil || !strings.Contains(err.Error(), "draft: provider failed") {
+	if err == nil || !strings.Contains(err.Error(), "review: provider failed") {
 		t.Fatalf("got %v", err)
 	}
 }
@@ -145,7 +186,7 @@ func TestSaveArtifactIncludesProvenance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`"pipeline": "grounded-v1"`, `"sources"`, `"quality"`} {
+	for _, want := range []string{`"pipeline": "grounded-v2"`, `"sources"`, `"quality"`} {
 		if !strings.Contains(string(data), want) {
 			t.Fatalf("artifact missing %s: %s", want, data)
 		}

@@ -3,8 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
-<title>CLI provider smoke test</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
+<title>SQLite WAL checkpoint starvation: one old reader holds the line</title>
+<script>(function(){try{var k='systems-daily-theme';var t=localStorage.getItem(k);if(t!=='light'&&t!=='dark'){t=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
 <style>
 
 :root {
@@ -16,9 +17,35 @@
   --code-bg: #f0f0f0;
   --pre-bg: #f4f4f4;
   --link: #1a1a1a;
+  --btn-bg: #eee;
+  --btn-fg: #333;
+}
+html[data-theme="light"] {
+  color-scheme: light;
+  --fg: #1a1a1a;
+  --muted: #555;
+  --bg: #fafafa;
+  --border: #ddd;
+  --code-bg: #f0f0f0;
+  --pre-bg: #f4f4f4;
+  --link: #1a1a1a;
+  --btn-bg: #eee;
+  --btn-fg: #333;
+}
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --fg: #e8e8e8;
+  --muted: #aaa;
+  --bg: #121212;
+  --border: #333;
+  --code-bg: #1e1e1e;
+  --pre-bg: #1a1a1a;
+  --link: #e8e8e8;
+  --btn-bg: #222;
+  --btn-fg: #ccc;
 }
 @media (prefers-color-scheme: dark) {
-  :root {
+  html:not([data-theme]) {
     --fg: #e8e8e8;
     --muted: #aaa;
     --bg: #121212;
@@ -26,6 +53,8 @@
     --code-bg: #1e1e1e;
     --pre-bg: #1a1a1a;
     --link: #e8e8e8;
+    --btn-bg: #222;
+    --btn-fg: #ccc;
   }
 }
 * { box-sizing: border-box; }
@@ -47,12 +76,39 @@ header.meta {
   padding-bottom: 0.75rem;
   margin-bottom: 1.5rem;
 }
+.meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.25rem;
+}
 .brand {
-  margin: 0 0 0.25rem;
+  margin: 0;
   font-size: 0.8rem;
   letter-spacing: 0.04em;
   text-transform: lowercase;
   color: var(--muted);
+}
+.theme-toggle {
+  margin: 0;
+  padding: 0.15rem 0.45rem;
+  font: inherit;
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  text-transform: lowercase;
+  color: var(--btn-fg);
+  background: var(--btn-bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  cursor: pointer;
+}
+.theme-toggle:hover {
+  border-color: var(--muted);
+}
+.theme-toggle:focus-visible {
+  outline: 1px solid var(--muted);
+  outline-offset: 2px;
 }
 .line {
   margin: 0;
@@ -129,17 +185,140 @@ footer a { color: var(--muted); }
 <body>
 <main>
 <header class="meta">
+<div class="meta-row">
 <p class="brand">systems-daily</p>
-<p class="line"><span class="cat">embedded</span> · <time datetime="2026-07-28">2026-07-28</time></p>
+<button type="button" id="theme-toggle" class="theme-toggle" aria-label="Toggle light and dark mode">theme</button>
+</div>
+<p class="line"><span class="cat">database</span> · <time datetime="2026-08-30">2026-08-30</time></p>
 </header>
 <article>
-<h1>CLI provider smoke test</h1>
-<p>Replace <code>scripts/example-llm-cli.sh</code> with a real completer.</p>
-<pre>pipeline works</pre>
+<h1>SQLite WAL checkpoint starvation: one old reader holds the line</h1>
+
+<h2>A reader fixes the version it is allowed to see</h2>
+
+<p>In SQLite WAL mode, a read transaction starts by fixing an end mark: the last valid commit visible at the moment the transaction begins. From then on, page lookup is constrained by that snapshot. If the same database page has several versions in the WAL, the reader uses the last frame for that page at or before its end mark. It does not advance to frames committed later by other connections. [1]</p>
+
+<p>That snapshot rule is what lets old readers coexist with new writes. Writers can continue by appending committed frames to the WAL while an existing reader keeps using its earlier view. SQLite WAL mode permits concurrent readers with one writer, so a reader pinned to an old snapshot does not by itself prevent later commits from being appended. [1]</p>
+
+<pre>
+time ---->
+
+WAL frames:
+[1] [2] ... [900] | [901] [902] ... [5000]
+                 ^
+                 reader R starts here
+                 high-level end mark = last commit visible to R
+
+reader R page lookup:
+  page P -> newest WAL frame for P at or before frame 900
+
+writers:
+  append committed frames after frame 900
+</pre>
+
+<p>The tension is not on the write path. It appears on the cleanup path. A checkpoint tries to copy WAL frames back into the main database, but it must not move past the boundary needed by any active reader. Otherwise a reader that started at an older snapshot could no longer reconstruct the page versions it is allowed to see. [1]</p>
+
+<h2>Checkpoint progress is bounded by active readers</h2>
+
+<p>A checkpoint can still do useful work while readers exist. The failure mode is partial checkpointing, not necessarily no checkpointing. It may backfill frames that are safe for all active readers, then stop when further progress would pass a protected reader boundary. Long-lived or overlapping readers can therefore prevent a checkpoint from completing and resetting the WAL. [1]</p>
+
+<p>The distinction between “complete” and “made progress” matters. If a checkpoint copies some older frames but cannot reach the current end of committed WAL content, the WAL remains in use. New commits can continue appending after the portion the checkpoint could not finish, so the WAL file can keep growing even though checkpoint attempts are occurring. [1]</p>
+
+<pre>
+checkpoint direction ---->
+
+WAL:
+[1] [2] ... [900] | [901] [902] ... [5000]
+                 ^
+                 active reader's protected checkpoint boundary
+
+checkpoint:
+  backfills eligible earlier frames
+  stops before passing the active reader boundary
+
+result:
+  checkpoint incomplete
+  WAL cannot reset
+  later writes append more frames
+</pre>
+
+<h2>The wal-index adds coordination state</h2>
+
+<p>The WAL overview describes the reader’s high-level end mark. The WAL-format layer exposes the coordination machinery used to make this efficient and safe. The wal-index is shared memory that lets SQLite locate the newest acceptable WAL frame for a page without scanning the whole WAL. It also holds checkpoint-related state, including `mxFrame`, `nBackfill`, read marks, and locks. [2]</p>
+
+<p>`mxFrame` is the last valid committed WAL frame. `nBackfill` counts frames already copied from the WAL into the database. A WAL reset is possible when `nBackfill == mxFrame` and no connection holds `WAL_READ_LOCK(N)` for `N > 0`. If an active reader prevents backfill from reaching `mxFrame`, that reset condition is not reached. [2]</p>
+
+<p>Do not collapse the high-level end mark and the wal-index read mark into one field. The WAL header has five read marks. A reader holding `WAL_READ_LOCK(N)` promises how it will obtain pages relative to `read-mark[N]`, and a checkpoint must not backfill more than that read mark. For `N > 0`, the same reader may still use WAL content beyond `read-mark[N]` up to its transaction’s `mxFrame`. The read mark is a checkpoint coordination boundary, not simply another name for the reader’s snapshot end mark. [2]</p>
+
+<p>The locks separate checkpoint and write serialization. `WAL_CKPT_LOCK` serializes checkpoints. `WAL_WRITE_LOCK` serializes appends and resets. That is why a system can still append new WAL frames while checkpoint completion and reset remain constrained by reader state. [2]</p>
+
+<h2>A concrete starvation trace</h2>
+
+<p>Suppose the WAL has 900 committed frames. Reader R starts a transaction, fixing its snapshot at that point. Writers then commit more transactions and append frames 901 through 5000. In this example, `mxFrame` is now 5000, because that is the last valid committed WAL frame. [1] [2]</p>
+
+<pre>
+initial:
+  committed WAL frames = 1..900
+  reader R starts
+  R sees commits through frame 900
+
+after more writes:
+  committed WAL frames = 1..5000
+  mxFrame = 5000
+  R still reads from its older snapshot
+
+checkpoint attempt:
+  nBackfill advances only as far as active reader constraints allow
+  checkpoint cannot complete through mxFrame
+
+reset test:
+  nBackfill == mxFrame ?  no
+  no nonzero WAL_READ_LOCK(N)?  no, while such a reader lock remains
+
+outcome:
+  WAL reset is not possible
+  later commits append after frame 5000
+</pre>
+
+<p>SQLite’s default automatic checkpoint threshold is around 1000 WAL pages, so the system may start checkpointing as the WAL grows. That does not guarantee reset. A `PASSIVE` checkpoint does as much work as possible without interfering with concurrent connections and may not complete. `FULL` and `RESTART` try harder and may wait for readers or writers, but they still operate under the reader and lock constraints that determine whether the checkpoint can finish. [1]</p>
+
+<p>This is checkpoint starvation in the narrow sense: writes are not necessarily starved, but checkpoint completion is. One old reader keeps enough WAL history live for its snapshot. While that reader remains active, `nBackfill` may be unable to catch `mxFrame`; if new commits continue, `mxFrame` moves forward again. After the reader is gone, a later checkpoint may be able to backfill through `mxFrame`, clear the reset conditions, and allow the WAL to reset, provided no other active reader is holding a conflicting boundary. [2]</p>
+<section class="sources" aria-labelledby="sources-heading">
+<h2 id="sources-heading">Sources</h2>
+<ol>
+<li id="source-sqlite-wal"><a href="https://sqlite.org/wal.html" rel="noreferrer">SQLite documentation: Write-Ahead Logging</a></li>
+<li id="source-sqlite-wal-format"><a href="https://sqlite.org/walformat.html" rel="noreferrer">SQLite documentation: WAL-mode File Format</a></li>
+</ol>
+</section>
+
 </article>
 <footer>
 <p><a href="/today/">today</a></p>
 </footer>
 </main>
+<script>
+(function () {
+  var key = 'systems-daily-theme';
+  var root = document.documentElement;
+  var btn = document.getElementById('theme-toggle');
+  function current() {
+    var t = root.getAttribute('data-theme');
+    if (t === 'light' || t === 'dark') return t;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  function apply(t) {
+    root.setAttribute('data-theme', t);
+    try { localStorage.setItem(key, t); } catch (e) {}
+    if (btn) btn.textContent = t === 'dark' ? 'light' : 'dark';
+  }
+  apply(current());
+  if (btn) {
+    btn.addEventListener('click', function () {
+      apply(current() === 'dark' ? 'light' : 'dark');
+    });
+  }
+})();
+</script>
+
 </body>
 </html>

@@ -41,7 +41,7 @@ func TestRenderHTMLBuildsSourcesFromValidatedData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`[official]`, `id="source-official"`, `https://example.com/docs`, "Docs &amp; design", "Sources"} {
+	for _, want := range []string{`[1]`, `id="source-official"`, `https://example.com/docs`, "Docs &amp; design", "Sources"} {
 		if !strings.Contains(doc, want) {
 			t.Errorf("missing %q", want)
 		}

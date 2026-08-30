@@ -92,9 +92,9 @@ func RenderHTML(p Page) (string, error) {
 }
 
 func renderCitations(body string, sources []topics.Source) string {
-	known := make(map[string]struct{}, len(sources))
-	for _, s := range sources {
-		known[s.ID] = struct{}{}
+	index := make(map[string]int, len(sources))
+	for i, s := range sources {
+		index[s.ID] = i + 1
 	}
 	return citationRE.ReplaceAllStringFunc(body, func(marker string) string {
 		match := citationRE.FindStringSubmatch(marker)
@@ -102,10 +102,11 @@ func renderCitations(body string, sources []topics.Source) string {
 			return marker
 		}
 		id := match[1]
-		if _, ok := known[id]; !ok {
+		n, ok := index[id]
+		if !ok {
 			return marker
 		}
-		return "[" + id + "]"
+		return fmt.Sprintf("[%d]", n)
 	})
 }
 

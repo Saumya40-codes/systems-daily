@@ -16,6 +16,8 @@ func TestSystemPromptRequiresEvidenceAndDepth(t *testing.T) {
 		"[[source-id]]",
 		"Never invent a source",
 		"natural English",
+		"topic-specific H2",
+		"Every paragraph must add",
 		"HTML fragment",
 		"Visuals",
 		"700-1200",
@@ -61,6 +63,19 @@ func TestSourcePacketTreatsEvidenceAsData(t *testing.T) {
 	}
 	if strings.Contains(p, "<SOURCE") {
 		t.Fatal("source data should be JSON encoded, not delimiter-based")
+	}
+}
+
+func TestReviewPromptCombinesCritiqueAndRewrite(t *testing.T) {
+	topic := topics.Topic{
+		Title: "XDP", CoreQuestion: "Why early?",
+		Sources: []topics.Source{{ID: "doc", Title: "Official", Evidence: "The hook runs early."}},
+	}
+	p := reviewPrompt(topic, "# Draft\n\nEarly hook [[doc]].")
+	for _, want := range []string{"Silently perform a strict technical", "rewrite the article", "not review notes", "DRAFT TO REVIEW", "Early hook [[doc]]"} {
+		if !strings.Contains(p, want) {
+			t.Fatalf("missing %q", want)
+		}
 	}
 }
 
