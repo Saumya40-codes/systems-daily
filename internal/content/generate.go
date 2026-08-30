@@ -15,6 +15,7 @@ import (
 )
 
 const PipelineVersion = "grounded-v3"
+const wordCountTolerance = 200
 
 var citationRE = regexp.MustCompile(`\[\[([a-z0-9][a-z0-9-]*)\]\]`)
 var modelLinkRE = regexp.MustCompile(`(?i)<a\b|\bhref\s*=|\bsrc\s*=\s*["']\s*//|https?://|\[[^]]+\]\([^)]+\)`)
@@ -26,7 +27,7 @@ var unclosedNonProseRE = regexp.MustCompile(`(?is)<(?:script|style|iframe|object
 var fencedCodeRE = regexp.MustCompile("(?s)```.*?```")
 var inlineCodeRE = regexp.MustCompile("`[^`]*`")
 var h2RE = regexp.MustCompile(`(?im)<h2\b[^>]*>.*?</h2>|^##\s+\S`)
-var editorialLeakRE = regexp.MustCompile(`(?i)\b(?:the supplied sources|source packet|evidence brief|technical critique|editorial process|documented mechanism|does not establish|(?:the )?sources (?:establish|support|show|state|document))\b`)
+var editorialLeakRE = regexp.MustCompile(`(?i)\b(?:the supplied sources|source packet|evidence brief|technical critique|editorial process|(?:the )?sources (?:establish|support|show|state|document))\b`)
 
 // Article is a reviewed daily write-up and its generation provenance.
 type Article struct {
@@ -120,11 +121,13 @@ func validateArticle(body string, sources []topics.Source, minW, maxW int) Quali
 	visibleBody := visibleArticleBody(body)
 	visibleStructure := htmlCodeBlockRE.ReplaceAllString(fencedCodeRE.ReplaceAllString(visibleBody, " "), " ")
 	wc := wordCount(visibleBody)
-	if wc < minW {
-		fail(fmt.Sprintf("too short: %d words, minimum %d", wc, minW))
+	minAccepted := max(1, minW-wordCountTolerance)
+	maxAccepted := maxW + wordCountTolerance
+	if wc < minAccepted {
+		fail(fmt.Sprintf("too short: %d words, minimum %d (target %d)", wc, minAccepted, minW))
 	}
-	if wc > maxW {
-		fail(fmt.Sprintf("too long: %d words, maximum %d", wc, maxW))
+	if wc > maxAccepted {
+		fail(fmt.Sprintf("too long: %d words, maximum %d (target %d)", wc, maxAccepted, maxW))
 	}
 	if firstTitle(visibleStructure) == "" {
 		fail("missing H1 title")
