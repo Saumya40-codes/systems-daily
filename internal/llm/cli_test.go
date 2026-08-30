@@ -49,11 +49,11 @@ func TestNewCompleterCLIRequiresCmd(t *testing.T) {
 }
 
 func TestNewCompleterCLIIncludesModelProvenance(t *testing.T) {
-	c, err := NewCompleter(Config{Provider: "cli", CLICommand: "codex-wrapper", CLIModel: "gpt-5"})
+	c, err := NewCompleter(Config{Provider: "cli", CLICommand: "agent-wrapper", CLIModel: "model-x"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := c.Label(); got != "cli:codex-wrapper (gpt-5)" {
+	if got := c.Label(); got != "cli:agent-wrapper (model-x)" {
 		t.Fatalf("got %q", got)
 	}
 }

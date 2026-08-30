@@ -17,15 +17,19 @@ Each article uses four completions: evidence brief, draft, technical critique, a
 LLM_PROVIDER=cli LLM_CLI_CMD=./scripts/example-llm-cli.sh ./bin/systems-daily preview --topic ebpf-xdp
 ```
 
-Point `LLM_CLI_CMD` at your own wrapper around a real headless completer you are allowed to use.
+Point `LLM_CLI_CMD` directly at a program that implements the documented protocol, or use the generic agent adapter with the agent command and provider-specific flags in `LLM_CLI_ARGS`.
 
 For an authenticated Codex CLI installation:
 
 ```bash
-LLM_PROVIDER=cli LLM_CLI_CMD=./scripts/codex-llm-cli.sh ./bin/systems-daily preview --topic ebpf-xdp
+LLM_PROVIDER=cli \
+LLM_CLI_CMD=./scripts/agent-llm-cli.sh \
+LLM_CLI_ARGS="codex exec --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check --sandbox read-only --color never -" \
+LLM_CLI_MODEL="your-codex-model" \
+./bin/systems-daily preview --topic ebpf-xdp
 ```
 
-The wrapper runs `codex exec` ephemerally in an empty, read-only workspace and ignores user configuration and rule files. It does not enable web search: research comes from the reviewed source packet. SMTP settings and `LLM_API_KEY` are removed from every CLI provider's child environment. Codex remains an agent with read tools, so `TOPICS_PATH` and its evidence are trusted operator input, not content to ingest from untrusted users.
+The generic wrapper builds the stage prompt and runs the configured command from an empty temporary directory. It sends the prompt on stdin by default; set `SYSTEMS_DAILY_AGENT_PROMPT_MODE=arg` for a command that expects a final prompt argument. Isolation, tool access, model selection, and non-interactive flags belong in `LLM_CLI_ARGS` because those interfaces differ by provider. SMTP settings and `LLM_API_KEY` are removed from every CLI provider's child environment. If the configured agent has tools, `TOPICS_PATH` and its evidence are trusted operator input, not content to ingest from untrusted users.
 
 Reading is on a minimal static site (not the inbox). Mail is a short notify with a link. Optional PDF attach if you want it.
 
