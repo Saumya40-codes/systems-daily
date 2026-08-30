@@ -47,10 +47,13 @@ func RunOnce(ctx context.Context, cfg *config.Config, opt Options) error {
 		}
 	} else {
 		recent := hist.RecentIDs(cfg.HistoryWindow)
-		topic, err = catalog.Pick(recent, nil)
+		topic, err = catalog.PickResearchReady(recent, nil)
 		if err != nil {
 			return err
 		}
+	}
+	if !topic.ResearchReady() {
+		return fmt.Errorf("topic %q is not research-ready; add core_question and curated sources", topic.ID)
 	}
 
 	log.Printf("topic: %s [%s] (%s)", topic.Title, topic.Category, topic.ID)
@@ -62,6 +65,7 @@ func RunOnce(ctx context.Context, cfg *config.Config, opt Options) error {
 		Model:      cfg.LLMModel,
 		CLICommand: cfg.LLMCLICmd,
 		CLIArgs:    splitCLIArgs(cfg.LLMCLIArgs),
+		CLIModel:   cfg.LLMCLIModel,
 	})
 	if err != nil {
 		return fmt.Errorf("llm: %w", err)
@@ -78,10 +82,16 @@ func RunOnce(ctx context.Context, cfg *config.Config, opt Options) error {
 		return fmt.Errorf("generate: %w", err)
 	}
 	log.Printf("generated ~%d words · subject: %s", article.WordCount, article.Subject)
+	artifactPath, err := content.SaveArtifact(cfg.ArtifactDir, article)
+	if err != nil {
+		return fmt.Errorf("archive article provenance: %w", err)
+	}
+	log.Printf("article provenance: %s", artifactPath)
 
 	// Use schedule timezone for the page date when set.
 	now := article.Generated.In(cfg.Location())
 	pageTitle := site.TitleFromBody(article.Body, topic.Title)
+	usedSources := citedSources(topic.Sources, article.SourceIDs)
 
 	pub, err := site.Publish(site.Page{
 		Title:        pageTitle,
@@ -89,6 +99,7 @@ func RunOnce(ctx context.Context, cfg *config.Config, opt Options) error {
 		Date:         now,
 		BodyMarkdown: article.Body,
 		Subject:      article.Subject,
+		Sources:      usedSources,
 	}, site.PublishOptions{
 		OutDir:     cfg.SiteOutDir,
 		WindowDays: cfg.SiteWindowDays,
@@ -158,6 +169,10 @@ func RunOnce(ctx context.Context, cfg *config.Config, opt Options) error {
 				Category:  topic.Category,
 				WordCount: article.WordCount,
 				Subject:   article.Subject,
+				Pipeline:  article.Pipeline,
+				Model:     article.Model,
+				SourceIDs: article.SourceIDs,
+				Artifact:  artifactPath,
 			}); err != nil {
 				return fmt.Errorf("record history: %w", err)
 			}
@@ -203,11 +218,29 @@ func RunOnce(ctx context.Context, cfg *config.Config, opt Options) error {
 			Category:  topic.Category,
 			WordCount: article.WordCount,
 			Subject:   article.Subject,
+			Pipeline:  article.Pipeline,
+			Model:     article.Model,
+			SourceIDs: article.SourceIDs,
+			Artifact:  artifactPath,
 		}); err != nil {
 			return fmt.Errorf("record history: %w", err)
 		}
 	}
 	return nil
+}
+
+func citedSources(all []topics.Source, ids []string) []topics.Source {
+	used := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		used[id] = struct{}{}
+	}
+	out := make([]topics.Source, 0, len(ids))
+	for _, source := range all {
+		if _, ok := used[source.ID]; ok {
+			out = append(out, source)
+		}
+	}
+	return out
 }
 
 func previewPDFPath(cfg *config.Config, pdfName string) string {

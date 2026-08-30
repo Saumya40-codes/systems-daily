@@ -6,7 +6,7 @@
 # Protocol:
 #   stdin:  ### SYSTEM / ### USER blocks
 #   env:    SYSTEMS_DAILY_SYSTEM, SYSTEMS_DAILY_USER
-#   stdout: article body only (HTML fragment or markdown)
+#   stdout: the requested editorial stage
 #
 # Do NOT use this to scrape claude.ai in a browser.
 
@@ -17,8 +17,23 @@ if [[ -z "$sys" || -z "$user" ]]; then
   echo "missing SYSTEMS_DAILY_SYSTEM/USER" >&2
   exit 1
 fi
-cat <<'HTML'
-<h1>CLI provider smoke test</h1>
-<p>Replace <code>scripts/example-llm-cli.sh</code> with a real completer.</p>
-<pre>pipeline works</pre>
-HTML
+if [[ "$user" == *'Produce an editorial brief'* ]]; then
+  printf '# Evidence brief\n\nUse the supplied mechanism and cite its source.\n'
+elif [[ "$user" == *'Act as a strict technical editor'* ]]; then
+  printf '# Technical critique\n\nThe smoke-test draft is repetitive but grounded.\n'
+else
+  remaining="$user"
+  source_ids=()
+  while [[ "$remaining" =~ \"id\"[[:space:]]*:[[:space:]]*\"([a-z0-9-]+)\" ]]; do
+    source_ids+=("${BASH_REMATCH[1]}")
+    remaining="${remaining#*"${BASH_REMATCH[0]}"}"
+  done
+	printf '<h1>CLI provider smoke test</h1>\n<p>'
+  for _ in {1..700}; do
+    printf 'mechanism '
+  done
+  for source_id in "${source_ids[@]}"; do
+    printf '[[%s]] ' "$source_id"
+  done
+  printf '</p>\n'
+fi

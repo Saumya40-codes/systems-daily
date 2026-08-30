@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Saumya40-codes/systems-daily/internal/topics"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
@@ -22,20 +23,23 @@ type Page struct {
 	// Body is LLM output: HTML fragment (preferred) or markdown.
 	BodyMarkdown string
 	Subject      string
+	Sources      []topics.Source
 }
 
 var (
-	fenceRE   = regexp.MustCompile("(?is)```([a-z0-9_-]*)\\s*\\r?\\n(.*?)\\r?\\n```")
-	h1RE      = regexp.MustCompile(`(?m)^#\s+(.+)$`)
-	htmlH1RE  = regexp.MustCompile(`(?is)<h1[^>]*>(.*?)</h1>`)
-	scriptRE  = regexp.MustCompile(`(?is)<script\b[^>]*>.*?</script>`)
-	styleRE   = regexp.MustCompile(`(?is)<style\b[^>]*>.*?</style>`)
-	iframeRE  = regexp.MustCompile(`(?is)<iframe\b[^>]*>.*?</iframe>`)
-	objectRE  = regexp.MustCompile(`(?is)<object\b[^>]*>.*?</object>`)
-	embedRE   = regexp.MustCompile(`(?is)<embed\b[^>]*/?>`)
-	onAttrRE  = regexp.MustCompile(`(?i)\s+on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)`)
-	jsHrefRE  = regexp.MustCompile(`(?i)\s+(href|src|xlink:href)\s*=\s*("|')\s*javascript:[^"']*("|')`)
+	fenceRE    = regexp.MustCompile("(?is)```([a-z0-9_-]*)\\s*\\r?\\n(.*?)\\r?\\n```")
+	h1RE       = regexp.MustCompile(`(?m)^#\s+(.+)$`)
+	htmlH1RE   = regexp.MustCompile(`(?is)<h1[^>]*>(.*?)</h1>`)
+	scriptRE   = regexp.MustCompile(`(?is)<script\b[^>]*>.*?</script>`)
+	styleRE    = regexp.MustCompile(`(?is)<style\b[^>]*>.*?</style>`)
+	iframeRE   = regexp.MustCompile(`(?is)<iframe\b[^>]*>.*?</iframe>`)
+	objectRE   = regexp.MustCompile(`(?is)<object\b[^>]*>.*?</object>`)
+	embedRE    = regexp.MustCompile(`(?is)<embed\b[^>]*/?>`)
+	metaRE     = regexp.MustCompile(`(?is)<meta\b[^>]*>`)
+	onAttrRE   = regexp.MustCompile(`(?i)\s+on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)`)
+	jsHrefRE   = regexp.MustCompile(`(?i)\s+(href|src|xlink:href)\s*=\s*("|')\s*javascript:[^"']*("|')`)
 	dataHrefRE = regexp.MustCompile(`(?i)\s+(href|src)\s*=\s*("|')\s*data:text/html[^"']*("|')`)
+	citationRE = regexp.MustCompile(`\[\[([a-z0-9][a-z0-9-]*)\]\]`)
 )
 
 func RenderHTML(p Page) (string, error) {
@@ -48,6 +52,7 @@ func RenderHTML(p Page) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	bodyHTML = renderCitations(bodyHTML, p.Sources)
 
 	dateStr := p.Date.Format("2006-01-02")
 	cat := html.EscapeString(p.Category)
@@ -75,6 +80,7 @@ func RenderHTML(p Page) (string, error) {
 	b.WriteString("</header>\n")
 	b.WriteString("<article>\n")
 	b.WriteString(bodyHTML)
+	b.WriteString(renderSources(p.Sources))
 	b.WriteString("\n</article>\n")
 	b.WriteString("<footer>\n")
 	b.WriteString("<p><a href=\"/today/\">today</a></p>\n")
@@ -83,6 +89,41 @@ func RenderHTML(p Page) (string, error) {
 	b.WriteString(themeToggleJS)
 	b.WriteString("\n</body>\n</html>\n")
 	return b.String(), nil
+}
+
+func renderCitations(body string, sources []topics.Source) string {
+	known := make(map[string]struct{}, len(sources))
+	for _, s := range sources {
+		known[s.ID] = struct{}{}
+	}
+	return citationRE.ReplaceAllStringFunc(body, func(marker string) string {
+		match := citationRE.FindStringSubmatch(marker)
+		if len(match) != 2 {
+			return marker
+		}
+		id := match[1]
+		if _, ok := known[id]; !ok {
+			return marker
+		}
+		return "[" + id + "]"
+	})
+}
+
+func renderSources(sources []topics.Source) string {
+	if len(sources) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\n<section class=\"sources\" aria-labelledby=\"sources-heading\">\n<h2 id=\"sources-heading\">Sources</h2>\n<ol>\n")
+	for _, s := range sources {
+		fmt.Fprintf(&b, `<li id="source-%s"><a href="%s" rel="noreferrer">%s</a>`, s.ID, html.EscapeString(s.URL), html.EscapeString(s.Title))
+		if s.Published != "" {
+			fmt.Fprintf(&b, " (%s)", html.EscapeString(s.Published))
+		}
+		b.WriteString("</li>\n")
+	}
+	b.WriteString("</ol>\n</section>\n")
+	return b.String()
 }
 
 // BodyToHTML converts an HTML fragment or markdown into article inner HTML.
@@ -149,6 +190,7 @@ func sanitizeFragment(s string) string {
 	s = iframeRE.ReplaceAllString(s, "")
 	s = objectRE.ReplaceAllString(s, "")
 	s = embedRE.ReplaceAllString(s, "")
+	s = metaRE.ReplaceAllString(s, "")
 	s = onAttrRE.ReplaceAllString(s, "")
 	s = jsHrefRE.ReplaceAllString(s, "")
 	s = dataHrefRE.ReplaceAllString(s, "")

@@ -1,9 +1,11 @@
 package topics
 
 import (
+	"fmt"
 	"math/rand"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -75,6 +77,71 @@ func TestCatalogIDsUniqueAndValid(t *testing.T) {
 	}
 }
 
+func TestDefaultCatalogHasResearchReadyDatabaseAndProductionTopics(t *testing.T) {
+	c := loadDefault(t)
+	ready, databases, namedProduction, planetScale := 0, 0, false, false
+	for _, tp := range c {
+		if !tp.ResearchReady() {
+			continue
+		}
+		ready++
+		if tp.Category == "database" {
+			databases++
+		}
+		for _, source := range tp.Sources {
+			if strings.Contains(source.Title, "Cloudflare") {
+				namedProduction = true
+			}
+			if strings.Contains(source.Title, "PlanetScale") {
+				planetScale = true
+			}
+		}
+	}
+	if ready < 7 || databases < 6 || !namedProduction || !planetScale {
+		t.Fatalf("ready=%d databases=%d namedProduction=%v planetScale=%v", ready, databases, namedProduction, planetScale)
+	}
+}
+
+func TestPickResearchReadyDoesNotRepeatExhaustedPool(t *testing.T) {
+	c := Catalog{{ID: "ready", Title: "Ready", CoreQuestion: "Why?", Sources: []Source{{ID: "doc"}}}}
+	if _, err := c.PickResearchReady([]string{"ready"}, rand.New(rand.NewSource(1))); err == nil {
+		t.Fatal("expected exhausted-pool error")
+	}
+}
+
+func TestPickResearchReadyKeepsSeventhDailySlot(t *testing.T) {
+	var catalog Catalog
+	var recent []string
+	for i := 0; i < 7; i++ {
+		id := fmt.Sprintf("ready-%d", i)
+		catalog = append(catalog, Topic{ID: id, Title: id, CoreQuestion: "Why?", Sources: []Source{{ID: "doc"}}})
+		if i < 6 {
+			recent = append(recent, id)
+		}
+	}
+	got, err := catalog.PickResearchReady(recent, rand.New(rand.NewSource(1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != "ready-6" {
+		t.Fatalf("got %s", got.ID)
+	}
+}
+
+func TestPickResearchReadySkipsBacklog(t *testing.T) {
+	c := Catalog{
+		{ID: "backlog", Title: "Backlog"},
+		{ID: "ready", Title: "Ready", CoreQuestion: "Why?", Sources: []Source{{ID: "doc"}}},
+	}
+	got, err := c.PickResearchReady(nil, rand.New(rand.NewSource(1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != "ready" {
+		t.Fatalf("got %s", got.ID)
+	}
+}
+
 func TestLoadFromFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "topics.json")
@@ -112,5 +179,40 @@ func TestLoadRejectsDuplicateIDs(t *testing.T) {
 	}
 	if _, err := Load(path); err == nil {
 		t.Fatal("expected duplicate id error")
+	}
+}
+
+func TestLoadRejectsUnsafeSourceURL(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bad-source.json")
+	body := `{"topics":[{"id":"x","title":"X","core_question":"Why?","sources":[{"id":"doc","title":"Doc","url":"javascript:alert(1)","evidence":"fact"}]}]}`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected unsafe URL error")
+	}
+}
+
+func TestLoadRejectsUnsafeTopicID(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bad-id.json")
+	if err := os.WriteFile(path, []byte(`{"topics":[{"id":"../escape","title":"X"}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected unsafe topic ID error")
+	}
+}
+
+func TestLoadRejectsOversizedEvidence(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "large-source.json")
+	body := `{"topics":[{"id":"x","title":"X","sources":[{"id":"doc","title":"Doc","url":"https://example.com","evidence":"` + strings.Repeat("x", maxEvidenceBytes+1) + `"}]}]}`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected evidence size error")
 	}
 }

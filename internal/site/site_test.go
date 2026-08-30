@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Saumya40-codes/systems-daily/internal/topics"
 )
 
 func TestRenderHTMLFromMarkdown(t *testing.T) {
@@ -27,6 +29,45 @@ A short note.
 		if !strings.Contains(htmlDoc, want) {
 			t.Errorf("missing %q", want)
 		}
+	}
+}
+
+func TestRenderHTMLBuildsSourcesFromValidatedData(t *testing.T) {
+	doc, err := RenderHTML(Page{
+		Title: "Grounded", Category: "database", Date: time.Now(),
+		BodyMarkdown: "# Grounded\n\nA claim [[official]].",
+		Sources:      []topics.Source{{ID: "official", Title: "Docs & design", URL: "https://example.com/docs", Published: "2026"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`[official]`, `id="source-official"`, `https://example.com/docs`, "Docs &amp; design", "Sources"} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	if strings.Contains(doc, "[[official]]") {
+		t.Fatal("raw citation marker remains")
+	}
+}
+
+func TestCitationMarkerInAttributeCannotInjectMarkup(t *testing.T) {
+	doc, err := RenderHTML(Page{
+		Title: "Safe", Date: time.Now(), BodyMarkdown: `<h1>Safe</h1><p title="[[official]]">claim [[official]]</p>`,
+		Sources: []topics.Source{{ID: "official", Title: "Docs", URL: "https://example.com"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(doc, `title="<a`) || strings.Contains(doc, "[[official]]") {
+		t.Fatalf("citation replacement corrupted HTML: %s", doc)
+	}
+}
+
+func TestSanitizeFragmentRemovesMetaRefresh(t *testing.T) {
+	got := sanitizeFragment(`<meta http-equiv="refresh" content="0;url=//evil.example"><h1>Safe</h1>`)
+	if strings.Contains(strings.ToLower(got), "<meta") {
+		t.Fatalf("meta tag survived: %s", got)
 	}
 }
 

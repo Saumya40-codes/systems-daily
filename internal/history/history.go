@@ -16,6 +16,10 @@ type Entry struct {
 	SentAt    time.Time `json:"sent_at"`
 	WordCount int       `json:"word_count,omitempty"`
 	Subject   string    `json:"subject,omitempty"`
+	Pipeline  string    `json:"pipeline,omitempty"`
+	Model     string    `json:"model,omitempty"`
+	SourceIDs []string  `json:"source_ids,omitempty"`
+	Artifact  string    `json:"artifact,omitempty"`
 }
 
 // Store is a simple append-only JSON history file.
@@ -49,7 +53,7 @@ func Open(path string) (*Store, error) {
 // RecentIDs returns topic IDs used within the last windowDays.
 func (s *Store) RecentIDs(windowDays int) []string {
 	if windowDays <= 0 {
-		windowDays = 60
+		windowDays = 6
 	}
 	cutoff := time.Now().AddDate(0, 0, -windowDays)
 	seen := map[string]struct{}{}
