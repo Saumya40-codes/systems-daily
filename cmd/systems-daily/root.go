@@ -121,10 +121,14 @@ func topicsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Printf("%-28s %-12s %s\n", "ID", "CATEGORY", "TITLE")
-			fmt.Println("----------------------------------------------------------------------")
+			fmt.Printf("%-28s %-12s %-6s %s\n", "ID", "CATEGORY", "READY", "TITLE")
+			fmt.Println("------------------------------------------------------------------------------")
 			for _, t := range catalog {
-				fmt.Printf("%-28s %-12s %s\n", t.ID, t.Category, t.Title)
+				ready := "no"
+				if t.ResearchReady() {
+					ready = "yes"
+				}
+				fmt.Printf("%-28s %-12s %-6s %s\n", t.ID, t.Category, ready, t.Title)
 			}
 			src := "embedded default"
 			if cfg.TopicsPath != "" {

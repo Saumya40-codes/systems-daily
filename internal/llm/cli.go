@@ -13,6 +13,7 @@ import (
 type CLIClient struct {
 	Command string
 	Args    []string
+	Model   string
 	// Timeout caps a single completion (0 = 10m default).
 	Timeout time.Duration
 }
@@ -31,6 +32,9 @@ func (c *CLIClient) Label() string {
 	if base == "" {
 		return "cli"
 	}
+	if c.Model != "" {
+		return "cli:" + base + " (" + c.Model + ")"
+	}
 	return "cli:" + base
 }
 
@@ -47,7 +51,7 @@ func (c *CLIClient) Chat(ctx context.Context, system, user string) (string, erro
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, c.Command, c.Args...)
-	cmd.Env = append(os.Environ(),
+	cmd.Env = append(safeCLIEnv(os.Environ()),
 		"SYSTEMS_DAILY_SYSTEM="+system,
 		"SYSTEMS_DAILY_USER="+user,
 	)
@@ -83,6 +87,19 @@ func (c *CLIClient) Chat(ctx context.Context, system, user string) (string, erro
 		return "", fmt.Errorf("LLM CLI %q returned agent chatter, not an article (got: %s)", c.Command, truncate(out, 120))
 	}
 	return out, nil
+}
+
+func safeCLIEnv(environ []string) []string {
+	out := make([]string, 0, len(environ))
+	for _, entry := range environ {
+		key, _, _ := strings.Cut(entry, "=")
+		wrapperControl := key == "SYSTEMS_DAILY_AGENT_PROMPT_MODE" || key == "SYSTEMS_DAILY_AGENT_CWD"
+		if strings.HasPrefix(key, "SMTP_") || key == "LLM_API_KEY" || strings.HasPrefix(key, "SYSTEMS_DAILY_") && !wrapperControl {
+			continue
+		}
+		out = append(out, entry)
+	}
+	return out
 }
 
 // looksLikeAgentNarration detects planning-only replies (no real article body).

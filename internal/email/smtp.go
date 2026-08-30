@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/smtp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -48,7 +49,7 @@ func Send(cfg SMTPConfig, msg Message) error {
 		return fmt.Errorf("To is empty")
 	}
 
-	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
+	addr := net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port))
 	toHeader := strings.Join(msg.To, ", ")
 	raw := buildMIME(msg.From, toHeader, msg.Subject, msg.Body, msg.Attachments)
 

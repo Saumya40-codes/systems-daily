@@ -1,6 +1,6 @@
 # systems-daily
 
-I'm more on the low-level systems side (memory, OS, embedded, GNSS, that kind of thing), and I want a light daily touchpoint with it. This tool generates one write-up each day on a topic from that area. Length sits in the middle: long enough to learn something, short enough to finish with coffee.
+I'm more on the low-level systems side (memory, OS, embedded, GNSS, that kind of thing), and I want a light daily touchpoint with it. This tool generates one source-grounded write-up each day on a topic from that area. Length sits in the middle: long enough to learn something, short enough to finish with coffee.
 
 Uses an LLM via **HTTP** (OpenAI-compatible: Groq, Ollama, OpenRouter, xAI, ...) or an optional **CLI** provider (your local script / headless CLI; stdout = article). Plain SMTP for notify mail.
 
@@ -11,13 +11,25 @@ Uses an LLM via **HTTP** (OpenAI-compatible: Groq, Ollama, OpenRouter, xAI, ...)
 | `http` (default) | `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` | Chat Completions API |
 | `cli` | `LLM_CLI_CMD`, optional `LLM_CLI_ARGS` | Runs a command; stdin = `### SYSTEM` / `### USER`; also sets `SYSTEMS_DAILY_SYSTEM` / `SYSTEMS_DAILY_USER`. **Does not** open claude.ai in a browser. |
 
-Example smoke test with the included stub:
+Each article uses exactly two completions: a grounded draft and a technical review/rewrite. If the review fails deterministic quality checks but the draft passes, the valid draft is published instead; the pipeline never spends a third repair call. The included stub exercises that protocol without a live model:
 
 ```bash
-LLM_PROVIDER=cli LLM_CLI_CMD=./scripts/example-llm-cli.sh ./bin/systems-daily preview --topic watchdogs
+LLM_PROVIDER=cli LLM_CLI_CMD=./scripts/example-llm-cli.sh ./bin/systems-daily preview --topic ebpf-xdp
 ```
 
-Point `LLM_CLI_CMD` at your own wrapper around a real headless completer you are allowed to use.
+Point `LLM_CLI_CMD` directly at a program that implements the documented protocol, or use the generic agent adapter with the agent command and provider-specific flags in `LLM_CLI_ARGS`.
+
+For an authenticated Codex CLI installation:
+
+```bash
+LLM_PROVIDER=cli \
+LLM_CLI_CMD=./scripts/agent-llm-cli.sh \
+LLM_CLI_ARGS="codex exec --ephemeral --ignore-user-config --ignore-rules --skip-git-repo-check --sandbox read-only --color never -" \
+LLM_CLI_MODEL="your-codex-model" \
+./bin/systems-daily preview --topic ebpf-xdp
+```
+
+The generic wrapper builds the stage prompt and runs the configured command from an empty temporary directory. It sends the prompt on stdin by default; set `SYSTEMS_DAILY_AGENT_PROMPT_MODE=arg` for a command that expects a final prompt argument. Isolation, tool access, model selection, and non-interactive flags belong in `LLM_CLI_ARGS` because those interfaces differ by provider. SMTP settings and `LLM_API_KEY` are removed from every CLI provider's child environment. If the configured agent has tools, `TOPICS_PATH` and its evidence are trusted operator input, not content to ingest from untrusted users.
 
 Reading is on a minimal static site (not the inbox). Mail is a short notify with a link. Optional PDF attach if you want it.
 
@@ -94,6 +106,7 @@ Env vars (or `.env` in cwd). See `.env.example`.
 | `LLM_API_KEY` | `ollama` | HTTP: bearer token |
 | `LLM_CLI_CMD` | | CLI: command or script path |
 | `LLM_CLI_ARGS` | | CLI: extra args (space-separated) |
+| `LLM_CLI_MODEL` | | CLI: optional model selection and provenance label |
 | `SMTP_*` | | Mail notify |
 | `SEND_AT` | `09:00` | Daily send time |
 | `TIMEZONE` | local | IANA zone, e.g. `Asia/Kolkata` |
@@ -102,6 +115,8 @@ Env vars (or `.env` in cwd). See `.env.example`.
 | `SITE_WINDOW_DAYS` | `7` | Keep dated pages this many days |
 | `ATTACH_PDF` | `false` | Also attach PDF to email |
 | `HISTORY_PATH` | `data/history.json` | Avoids recent topic repeats |
+| `HISTORY_WINDOW_DAYS` | `6` | Do not repeat a ready topic inside this window |
+| `ARTIFACT_DIR` | `data/articles` | JSON provenance: sources, draft, reviewed final, model, and quality report |
 | `TOPICS_PATH` | (embedded) | Custom topics JSON |
 | `DRY_RUN` | `false` | Generate but do not send |
 
@@ -115,10 +130,35 @@ export TOPICS_PATH=./topics.json
 ./bin/systems-daily topics
 ```
 
-Catalog titles are **already slices** (e.g. "Windowed WDT: kick too early vs too late"), not course overviews.
+Catalog titles are **already slices**, not course overviews. Automatic selection uses only research-ready topics with a `core_question` and validated HTTPS source evidence. The remaining entries are an editorial backlog; forcing one with `--topic` fails before calling the model until sources are added. `systems-daily topics` shows readiness.
+
+Research-ready entries use this shape:
+
+```json
+{
+  "id": "example",
+  "title": "One narrow mechanism",
+  "category": "database",
+  "core_question": "Why does this mechanism behave this way?",
+  "angles": ["one useful constraint"],
+  "sources": [
+    {
+      "id": "official-doc",
+      "title": "Official design documentation",
+      "url": "https://example.com/design",
+      "published": "2026-01-01",
+      "evidence": "A concise, manually verified summary of facts this source supports."
+    }
+  ]
+}
+```
+
+Source IDs may contain lowercase letters, digits, and hyphens. URLs must be absolute HTTPS URLs. Evidence is bounded to keep prompts reviewable. The model cites `[[official-doc]]`; the site replaces that marker and builds the linked Sources section from catalog data, so model-generated URLs are never published.
+
+The final article must have an H1, meet the configured word range, include at least one valid citation, and contain no unknown citation IDs. A failed review or quality check stops before publication. The full accepted pipeline artifact is archived under `ARTIFACT_DIR`.
 
 ### Content format (hybrid)
-The model preferably returns an **HTML fragment** (headings, paragraphs, `<pre>`, inline SVG). The site shell (brand, date, CSS, CSP) is always ours. Markdown is still accepted as a fallback. Scripts and inline event handlers are stripped.
+The final model stage preferably returns an **HTML fragment** (headings, paragraphs, `<pre>`, inline SVG). The site shell (brand, date, CSS, CSP, citations, and source list) is always ours. Markdown is still accepted as a fallback. Scripts and inline event handlers are stripped.
 
 ## Layout
 

@@ -2,12 +2,16 @@ package site
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 	"html"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/Saumya40-codes/systems-daily/internal/topics"
+	"github.com/microcosm-cc/bluemonday"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
@@ -22,20 +26,24 @@ type Page struct {
 	// Body is LLM output: HTML fragment (preferred) or markdown.
 	BodyMarkdown string
 	Subject      string
+	Sources      []topics.Source
 }
 
 var (
-	fenceRE   = regexp.MustCompile("(?is)```([a-z0-9_-]*)\\s*\\r?\\n(.*?)\\r?\\n```")
-	h1RE      = regexp.MustCompile(`(?m)^#\s+(.+)$`)
-	htmlH1RE  = regexp.MustCompile(`(?is)<h1[^>]*>(.*?)</h1>`)
-	scriptRE  = regexp.MustCompile(`(?is)<script\b[^>]*>.*?</script>`)
-	styleRE   = regexp.MustCompile(`(?is)<style\b[^>]*>.*?</style>`)
-	iframeRE  = regexp.MustCompile(`(?is)<iframe\b[^>]*>.*?</iframe>`)
-	objectRE  = regexp.MustCompile(`(?is)<object\b[^>]*>.*?</object>`)
-	embedRE   = regexp.MustCompile(`(?is)<embed\b[^>]*/?>`)
-	onAttrRE  = regexp.MustCompile(`(?i)\s+on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)`)
-	jsHrefRE  = regexp.MustCompile(`(?i)\s+(href|src|xlink:href)\s*=\s*("|')\s*javascript:[^"']*("|')`)
-	dataHrefRE = regexp.MustCompile(`(?i)\s+(href|src)\s*=\s*("|')\s*data:text/html[^"']*("|')`)
+	fenceRE       = regexp.MustCompile("(?is)```([a-z0-9_-]*)\\s*\\r?\\n(.*?)\\r?\\n```")
+	h1RE          = regexp.MustCompile(`(?m)^#\s+(.+)$`)
+	htmlH1RE      = regexp.MustCompile(`(?is)<h1[^>]*>(.*?)</h1>`)
+	scriptRE      = regexp.MustCompile(`(?is)<script\b[^>]*>.*?</script>`)
+	styleRE       = regexp.MustCompile(`(?is)<style\b[^>]*>.*?</style>`)
+	iframeRE      = regexp.MustCompile(`(?is)<iframe\b[^>]*>.*?</iframe>`)
+	objectRE      = regexp.MustCompile(`(?is)<object\b[^>]*>.*?</object>`)
+	embedRE       = regexp.MustCompile(`(?is)<embed\b[^>]*/?>`)
+	metaRE        = regexp.MustCompile(`(?is)<meta\b[^>]*>`)
+	onAttrRE      = regexp.MustCompile(`(?i)\s+on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)`)
+	jsHrefRE      = regexp.MustCompile(`(?i)\s+(href|src|xlink:href)\s*=\s*("|')\s*javascript:[^"']*("|')`)
+	dataHrefRE    = regexp.MustCompile(`(?i)\s+(href|src)\s*=\s*("|')\s*data:text/html[^"']*("|')`)
+	citationRE    = regexp.MustCompile(`\[\[([a-z0-9][a-z0-9-]*)\]\]`)
+	articlePolicy = newArticlePolicy()
 )
 
 func RenderHTML(p Page) (string, error) {
@@ -48,6 +56,7 @@ func RenderHTML(p Page) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	bodyHTML = renderCitations(bodyHTML, p.Sources)
 
 	dateStr := p.Date.Format("2006-01-02")
 	cat := html.EscapeString(p.Category)
@@ -57,10 +66,10 @@ func RenderHTML(p Page) (string, error) {
 	b.WriteString("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n")
 	b.WriteString("<meta charset=\"utf-8\">\n")
 	b.WriteString("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n")
-	b.WriteString("<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'\">\n")
+	fmt.Fprintf(&b, "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'sha256-%s' 'sha256-%s'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'\">\n", scriptHash(themeInitJS), scriptHash(themeToggleJS))
 	fmt.Fprintf(&b, "<title>%s</title>\n", escTitle)
 	// Apply saved/system theme before paint to avoid a flash.
-	b.WriteString("<script>(function(){try{var k='systems-daily-theme';var t=localStorage.getItem(k);if(t!=='light'&&t!=='dark'){t=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>\n")
+	fmt.Fprintf(&b, "<script>%s</script>\n", themeInitJS)
 	b.WriteString("<style>\n")
 	b.WriteString(minimalCSS)
 	b.WriteString("\n</style>\n</head>\n<body>\n")
@@ -75,14 +84,51 @@ func RenderHTML(p Page) (string, error) {
 	b.WriteString("</header>\n")
 	b.WriteString("<article>\n")
 	b.WriteString(bodyHTML)
+	b.WriteString(renderSources(p.Sources))
 	b.WriteString("\n</article>\n")
 	b.WriteString("<footer>\n")
 	b.WriteString("<p><a href=\"/today/\">today</a></p>\n")
 	b.WriteString("</footer>\n")
 	b.WriteString("</main>\n")
-	b.WriteString(themeToggleJS)
+	fmt.Fprintf(&b, "<script>%s</script>\n", themeToggleJS)
 	b.WriteString("\n</body>\n</html>\n")
 	return b.String(), nil
+}
+
+func renderCitations(body string, sources []topics.Source) string {
+	index := make(map[string]int, len(sources))
+	for i, s := range sources {
+		index[s.ID] = i + 1
+	}
+	return citationRE.ReplaceAllStringFunc(body, func(marker string) string {
+		match := citationRE.FindStringSubmatch(marker)
+		if len(match) != 2 {
+			return marker
+		}
+		id := match[1]
+		n, ok := index[id]
+		if !ok {
+			return marker
+		}
+		return fmt.Sprintf("[%d]", n)
+	})
+}
+
+func renderSources(sources []topics.Source) string {
+	if len(sources) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\n<section class=\"sources\" aria-labelledby=\"sources-heading\">\n<h2 id=\"sources-heading\">Sources</h2>\n<ol>\n")
+	for _, s := range sources {
+		fmt.Fprintf(&b, `<li id="source-%s"><a href="%s" rel="noreferrer">%s</a>`, s.ID, html.EscapeString(s.URL), html.EscapeString(s.Title))
+		if s.Published != "" {
+			fmt.Fprintf(&b, " (%s)", html.EscapeString(s.Published))
+		}
+		b.WriteString("</li>\n")
+	}
+	b.WriteString("</ol>\n</section>\n")
+	return b.String()
 }
 
 // BodyToHTML converts an HTML fragment or markdown into article inner HTML.
@@ -98,7 +144,11 @@ func BodyToHTML(src string) (string, error) {
 		return sanitizeFragment(src), nil
 	}
 	md := prepareMarkdown(src)
-	return mdToHTML(md)
+	body, err := mdToHTML(md)
+	if err != nil {
+		return "", err
+	}
+	return sanitizeFragment(body), nil
 }
 
 func stripOuterDocument(src string) string {
@@ -149,11 +199,26 @@ func sanitizeFragment(s string) string {
 	s = iframeRE.ReplaceAllString(s, "")
 	s = objectRE.ReplaceAllString(s, "")
 	s = embedRE.ReplaceAllString(s, "")
+	s = metaRE.ReplaceAllString(s, "")
 	s = onAttrRE.ReplaceAllString(s, "")
 	s = jsHrefRE.ReplaceAllString(s, "")
 	s = dataHrefRE.ReplaceAllString(s, "")
 	s = filterUselessSVGs(s)
-	return strings.TrimSpace(s)
+	return strings.TrimSpace(articlePolicy.Sanitize(s))
+}
+
+func newArticlePolicy() *bluemonday.Policy {
+	p := bluemonday.NewPolicy()
+	p.AllowElements("h1", "h2", "h3", "h4", "p", "pre", "code", "blockquote", "ul", "ol", "li", "table", "thead", "tbody", "tr", "th", "td", "strong", "em", "b", "i", "span", "div", "section", "article", "br", "hr")
+	p.AllowAttrs("id", "class").OnElements("h1", "h2", "h3", "h4", "p", "pre", "code", "blockquote", "ul", "ol", "li", "table", "thead", "tbody", "tr", "th", "td", "span", "div", "section", "article")
+	p.AllowElements("svg", "g", "path", "rect", "circle", "line", "polyline", "polygon", "text", "defs", "marker")
+	p.AllowAttrs("viewbox", "width", "height", "fill", "stroke", "stroke-width", "x", "y", "x1", "x2", "y1", "y2", "cx", "cy", "r", "rx", "ry", "d", "points", "transform", "marker-end", "orient", "refx", "refy", "markerwidth", "markerheight").OnElements("svg", "g", "path", "rect", "circle", "line", "polyline", "polygon", "text", "defs", "marker")
+	return p
+}
+
+func scriptHash(script string) string {
+	sum := sha256.Sum256([]byte(script))
+	return base64.StdEncoding.EncodeToString(sum[:])
 }
 
 // prepareMarkdown: drop mermaid; lift svg fences to raw HTML; leave text/code fences.
@@ -407,8 +472,10 @@ footer {
 footer a { color: var(--muted); }
 `
 
+const themeInitJS = `(function(){try{var k='systems-daily-theme';var t=localStorage.getItem(k);if(t!=='light'&&t!=='dark'){t=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.setAttribute('data-theme',t);}catch(e){}})();`
+
 // themeToggleJS is a tiny shell script (not from the model).
-const themeToggleJS = `<script>
+const themeToggleJS = `
 (function () {
   var key = 'systems-daily-theme';
   var root = document.documentElement;
@@ -430,5 +497,4 @@ const themeToggleJS = `<script>
     });
   }
 })();
-</script>
 `

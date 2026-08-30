@@ -284,10 +284,26 @@
       "id": "ebpf-xdp",
       "title": "XDP DROP: verdict before sk_buff exists",
       "category": "net",
+      "core_question": "Which packet-processing work does an XDP_DROP verdict avoid, and what did that change for Cloudflare's DDoS path?",
       "angles": [
         "driver mode",
         "maps",
         "redirect vs drop"
+      ],
+      "sources": [
+        {
+          "id": "cloudflare-l4drop",
+          "title": "Cloudflare: L4Drop, XDP DDoS Mitigations",
+          "url": "https://blog.cloudflare.com/l4drop-xdp-ebpf-based-ddos-mitigations/",
+          "published": "2018-11-28",
+          "evidence": "Cloudflare replaced its NIC-specific Floodgate path with always-on XDP-based L4Drop. Gatebot and bpftools rules were compiled to eBPF rather than stored in maps because the filters needed arbitrary packet comparisons and the verifier then disallowed loops. Cloudflare reported L4Drop running across its servers; one attack exceeded 8 million dropped packets per second while overall CPU rose about 10 percent. Packet samples were copied to a perf event ring before matching traffic was dropped."
+        },
+        {
+          "id": "kernel-xdp-rx-metadata",
+          "title": "Linux kernel documentation: XDP RX Metadata",
+          "url": "https://docs.kernel.org/networking/xdp-rx-metadata.html",
+          "evidence": "An XDP program runs with struct xdp_md and can access packet data through data and data_end. Driver-provided metadata is exposed through XDP kfuncs. The documentation distinguishes the XDP program context from the later skb path and describes metadata transfer when packets are redirected into an AF_XDP XSK."
+        }
       ]
     },
     {
@@ -668,6 +684,160 @@
         "perf lock",
         "sharding",
         "when MCS helps"
+      ]
+    },
+    {
+      "id": "postgres-hot-chain",
+      "title": "PostgreSQL HOT updates: one index entry, many tuple versions",
+      "category": "database",
+      "core_question": "How does PostgreSQL follow a HOT chain without adding a new index entry for every update?",
+      "angles": [
+        "same-page requirement",
+        "line-pointer redirect",
+        "fillfactor"
+      ],
+      "sources": [
+        {
+          "id": "postgres-hot-docs",
+          "title": "PostgreSQL documentation: Heap-Only Tuples",
+          "url": "https://www.postgresql.org/docs/18/storage-hot.html",
+          "evidence": "HOT is possible when an update does not modify an indexed column and the old heap page has room for the new row version. No new index entry is needed. Indexes keep pointing to the original page item identifier; pruning can turn that item into a redirect and remove dead intermediate versions. Lower fillfactor can leave page space and increase the chance of HOT updates."
+        },
+        {
+          "id": "postgres-page-layout",
+          "title": "PostgreSQL documentation: Database Page Layout",
+          "url": "https://www.postgresql.org/docs/18/storage-page-layout.html",
+          "evidence": "A heap page has a header, an array of fixed-size item identifiers, free space, tuple data, and special space. Item identifiers remain stable until freed, even when tuple data moves within the page. Heap tuple headers carry transaction visibility fields and a CTID that normally identifies the tuple's current version or a newer version in an update chain."
+        }
+      ]
+    },
+    {
+      "id": "postgres-visibility-map",
+      "title": "PostgreSQL index-only scans still consult the heap's visibility map",
+      "category": "database",
+      "core_question": "Why can an index-only scan avoid most heap reads but not all of them?",
+      "angles": [
+        "all-visible bit",
+        "VACUUM",
+        "covering indexes"
+      ],
+      "sources": [
+        {
+          "id": "postgres-vm-docs",
+          "title": "PostgreSQL documentation: Visibility Map",
+          "url": "https://www.postgresql.org/docs/18/storage-vm.html",
+          "evidence": "Each heap relation has a separate visibility-map fork with two bits per heap page: all-visible and all-frozen. The map is conservative. VACUUM sets bits, while data modification clears them. Index-only scans can trust an all-visible bit and avoid checking individual heap tuples; indexes themselves do not have visibility maps."
+        },
+        {
+          "id": "postgres-index-only",
+          "title": "PostgreSQL documentation: Index-Only Scans and Covering Indexes",
+          "url": "https://www.postgresql.org/docs/18/indexes-index-only-scans.html",
+          "evidence": "PostgreSQL indexes do not normally contain transaction visibility information. An index-only scan checks the visibility-map bit for the referenced heap page. If the page is all-visible, the heap fetch is skipped; if not, the executor must visit the heap. The optimization pays when a significant fraction of heap pages are all-visible."
+        }
+      ]
+    },
+    {
+      "id": "sqlite-wal-checkpoint",
+      "title": "SQLite WAL checkpoint starvation: one old reader holds the line",
+      "category": "database",
+      "core_question": "How does a reader's end mark stop a checkpoint and allow SQLite's WAL file to keep growing?",
+      "angles": [
+        "reader end mark",
+        "wal-index",
+        "PASSIVE vs RESTART"
+      ],
+      "sources": [
+        {
+          "id": "sqlite-wal",
+          "title": "SQLite documentation: Write-Ahead Logging",
+          "url": "https://sqlite.org/wal.html",
+          "evidence": "A WAL reader fixes an end mark at the last valid commit visible when its transaction starts. For a page lookup it uses the last frame for that page at or before the end mark. A checkpoint copies frames back to the database but must stop when it reaches content past any active reader's end mark. Overlapping long-lived readers can therefore prevent a checkpoint from completing and resetting the WAL. SQLite defaults to an automatic checkpoint around 1000 WAL pages and permits concurrent readers with one writer. PASSIVE checkpoints do as much work as possible without interfering with concurrent connections and may not complete; FULL and RESTART modes try harder and may wait for readers or writers."
+        },
+        {
+          "id": "sqlite-wal-format",
+          "title": "SQLite documentation: WAL-mode File Format",
+          "url": "https://sqlite.org/walformat.html",
+          "evidence": "The wal-index is shared memory used to locate the newest acceptable WAL frame for a page without scanning the full WAL. mxFrame is the last valid committed WAL frame; nBackfill counts frames already copied into the database. A reset is possible when nBackfill equals mxFrame and no connection holds WAL_READ_LOCK(N) for N greater than zero. The header has five read marks. A reader holding WAL_READ_LOCK(N) promises how it will obtain pages relative to read-mark[N], and a checkpoint must not backfill more than that read mark. For N greater than zero, that reader may still use WAL content beyond read-mark[N] up to its transaction's mxFrame, so the read mark is a checkpoint coordination boundary and must not be presented as identical to the reader's high-level end mark. WAL_CKPT_LOCK serializes checkpoints while WAL_WRITE_LOCK serializes appends and resets."
+        }
+      ]
+    },
+    {
+      "id": "rocksdb-leveled-compaction",
+      "title": "RocksDB leveled compaction: paying write amplification for bounded reads",
+      "category": "database",
+      "core_question": "How does moving overlapping SST data down levels trade write work for fewer files on a point lookup?",
+      "angles": [
+        "overlap at L0",
+        "compaction score",
+        "dynamic level bytes"
+      ],
+      "sources": [
+        {
+          "id": "rocksdb-leveled",
+          "title": "RocksDB wiki: Leveled Compaction",
+          "url": "https://github.com/facebook/rocksdb/wiki/Leveled-Compaction",
+          "evidence": "L0 contains flushed files that may overlap. Levels above L0 are range-partitioned sorted runs with target sizes that usually grow exponentially. Compaction merges selected files with overlapping key ranges in the next level. Level scores compare current size with target size, while L0 also considers file count. Dynamic level sizing is recommended and became the default in RocksDB 8.4."
+        },
+        {
+          "id": "rocksdb-compaction",
+          "title": "RocksDB wiki: Compaction",
+          "url": "https://github.com/facebook/rocksdb/wiki/Compaction",
+          "evidence": "Compaction removes overwritten or deleted data and reorganizes SST files. The compaction style changes write, read, and space amplification. Background compaction capacity must keep up with incoming writes; otherwise pending compaction bytes and L0 files accumulate and can lead to write stalls."
+        }
+      ]
+    },
+    {
+      "id": "vitess-vreplication-reshard",
+      "title": "Vitess resharding: copy, catch up, verify, then switch traffic",
+      "category": "database",
+      "core_question": "How does Vitess move a live keyspace to new shards without treating cutover as one atomic copy?",
+      "angles": [
+        "VReplication",
+        "VDiff",
+        "read-before-write cutover"
+      ],
+      "sources": [
+        {
+          "id": "vitess-resharding",
+          "title": "Vitess 24 documentation: Reshard",
+          "url": "https://vitess.io/docs/24.0/reference/vreplication/reshard/",
+          "published": "Vitess 24 documentation",
+          "evidence": "The documented Reshard lifecycle creates a workflow, monitors copy and replication lag, checks target correctness with VDiff, switches traffic, and completes cleanup. SwitchTraffic can move tablet types separately. For primary traffic it stops source writes and waits for the target to catch up, so low replication lag limits the write-unavailable cutover period. Reverse replication is enabled by default to support rollback."
+        },
+        {
+          "id": "vitess-resharding-guide",
+          "title": "Vitess 22 user guide: Resharding",
+          "url": "https://vitess.io/docs/22.0/user-guides/configuration-advanced/resharding/",
+          "published": "Vitess 22 documentation",
+          "evidence": "The worked guide starts Reshard online, validates source and target consistency with VDiff, switches RDONLY and REPLICA traffic before primary traffic, and only then completes the workflow and removes old shards. It also shows how primary Vindex choice determines routing, join locality, and whether related transactional rows stay on one shard."
+        }
+      ]
+    },
+    {
+      "id": "planetscale-shard-qps",
+      "title": "PlanetScale at one million QPS: shard saturation before the headline",
+      "category": "database",
+      "core_question": "Why did doubling shards nearly double throughput, and which latency signal showed each shard was saturated?",
+      "angles": [
+        "horizontal scaling",
+        "p99 latency",
+        "benchmark limits"
+      ],
+      "sources": [
+        {
+          "id": "planetscale-million-qps",
+          "title": "PlanetScale: One million queries per second with MySQL",
+          "url": "https://planetscale.com/blog/one-million-queries-per-second-with-mysql",
+          "published": "2022-09-01",
+          "evidence": "PlanetScale ran a TPC-C sysbench workload on its Vitess-based service. As client threads rose, each shard eventually saturated: extra concurrency raised latency rather than throughput, especially at p99. The report measured about 420,000 QPS with 16 shards and 840,000 with 32, then used 40 shards to sustain more than one million QPS for five minutes. PlanetScale states that this was not a rigorous academic benchmark and used a single-tenant environment with non-standard timeout changes."
+        },
+        {
+          "id": "vitess-reshard-v24",
+          "title": "Vitess 24 documentation: Reshard",
+          "url": "https://vitess.io/docs/24.0/reference/vreplication/reshard/",
+          "published": "Vitess 24 documentation",
+          "evidence": "Vitess Reshard horizontally shards an existing keyspace through a workflow lifecycle: create, monitor, VDiff, SwitchTraffic, and complete. Copy work can significantly affect source tablets, and status reports copy progress plus source-to-target replication lag. This operational machinery is what makes adding shards more than a benchmark configuration change."
+        }
       ]
     }
   ]

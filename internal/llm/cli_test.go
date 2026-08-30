@@ -48,6 +48,16 @@ func TestNewCompleterCLIRequiresCmd(t *testing.T) {
 	}
 }
 
+func TestNewCompleterCLIIncludesModelProvenance(t *testing.T) {
+	c, err := NewCompleter(Config{Provider: "cli", CLICommand: "agent-wrapper", CLIModel: "model-x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := c.Label(); got != "cli:agent-wrapper (model-x)" {
+		t.Fatalf("got %q", got)
+	}
+}
+
 func TestNewCompleterHTTP(t *testing.T) {
 	c, err := NewCompleter(Config{Provider: "http", BaseURL: "http://x", APIKey: "k", Model: "m"})
 	if err != nil {
@@ -84,5 +94,30 @@ func TestLooksLikeAgentNarration(t *testing.T) {
 	}
 	if looksLikeAgentNarration("<h1>WDT</h1><p>A windowed watchdog...</p>") {
 		t.Fatal("article should pass")
+	}
+}
+
+func TestSafeCLIEnvRemovesApplicationSecrets(t *testing.T) {
+	got := safeCLIEnv([]string{
+		"PATH=/bin",
+		"HOME=/home/test",
+		"OPENAI_API_KEY=codex-auth",
+		"LLM_API_KEY=article-provider-secret",
+		"SMTP_PASS=mail-secret",
+		"SMTP_USER=user@example.com",
+		"SYSTEMS_DAILY_USER=old-prompt",
+		"SYSTEMS_DAILY_AGENT_PROMPT_MODE=arg",
+		"SYSTEMS_DAILY_AGENT_CWD=/tmp/agent",
+	})
+	joined := strings.Join(got, "\n")
+	for _, want := range []string{"PATH=/bin", "HOME=/home/test", "OPENAI_API_KEY=codex-auth", "SYSTEMS_DAILY_AGENT_PROMPT_MODE=arg", "SYSTEMS_DAILY_AGENT_CWD=/tmp/agent"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("missing %q from %q", want, joined)
+		}
+	}
+	for _, secret := range []string{"article-provider-secret", "mail-secret", "user@example.com", "old-prompt"} {
+		if strings.Contains(joined, secret) {
+			t.Errorf("leaked %q in %q", secret, joined)
+		}
 	}
 }

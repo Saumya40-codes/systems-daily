@@ -30,6 +30,7 @@ type Config struct {
 
 	CLICommand string   // required if provider=cli (e.g. "claude" or path to a script)
 	CLIArgs    []string // extra args before the command reads stdin (e.g. "-p")
+	CLIModel   string   // optional model name retained in provenance
 }
 
 // NewCompleter builds an HTTP or CLI completer from Config.
@@ -48,7 +49,9 @@ func NewCompleter(cfg Config) (Completer, error) {
 		if strings.TrimSpace(cfg.CLICommand) == "" {
 			return nil, fmt.Errorf("LLM_PROVIDER=cli requires LLM_CLI_CMD")
 		}
-		return NewCLI(cfg.CLICommand, cfg.CLIArgs), nil
+		client := NewCLI(cfg.CLICommand, cfg.CLIArgs)
+		client.Model = strings.TrimSpace(cfg.CLIModel)
+		return client, nil
 	default:
 		return nil, fmt.Errorf("unknown LLM_PROVIDER %q (use http or cli)", cfg.Provider)
 	}

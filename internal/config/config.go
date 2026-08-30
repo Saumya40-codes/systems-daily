@@ -17,8 +17,9 @@ type Config struct {
 	LLMAPIKey  string
 	LLMModel   string
 	// CLI (local command; stdout = article). See internal/llm CLI protocol.
-	LLMCLICmd  string
-	LLMCLIArgs string // space-separated extra args, e.g. "-p"
+	LLMCLICmd   string
+	LLMCLIArgs  string // space-separated extra args, e.g. "-p"
+	LLMCLIModel string // provenance label; wrappers may also use it to select a model
 
 	// Email
 	SMTPHost     string
@@ -38,6 +39,7 @@ type Config struct {
 	TargetWordsMin int
 	TargetWordsMax int
 	HistoryPath    string
+	ArtifactDir    string // reviewed article provenance archive
 	HistoryWindow  int    // don't reuse a topic within N days
 	TopicsPath     string // empty = embedded default catalog
 
@@ -61,6 +63,7 @@ func Load() (*Config, error) {
 		LLMModel:       env("LLM_MODEL", "llama3.2"),
 		LLMCLICmd:      env("LLM_CLI_CMD", ""),
 		LLMCLIArgs:     env("LLM_CLI_ARGS", ""),
+		LLMCLIModel:    env("LLM_CLI_MODEL", ""),
 		SMTPHost:       env("SMTP_HOST", ""),
 		SMTPPort:       envInt("SMTP_PORT", 587),
 		SMTPUser:       env("SMTP_USER", ""),
@@ -74,7 +77,8 @@ func Load() (*Config, error) {
 		TargetWordsMin: envInt("TARGET_WORDS_MIN", 700),
 		TargetWordsMax: envInt("TARGET_WORDS_MAX", 1200),
 		HistoryPath:    env("HISTORY_PATH", "data/history.json"),
-		HistoryWindow:  envInt("HISTORY_WINDOW_DAYS", 60),
+		ArtifactDir:    env("ARTIFACT_DIR", "data/articles"),
+		HistoryWindow:  envInt("HISTORY_WINDOW_DAYS", 6),
 		TopicsPath:     env("TOPICS_PATH", ""),
 		SiteOutDir:     env("SITE_OUT_DIR", "site/public"),
 		SiteBaseURL:    env("SITE_BASE_URL", ""),
