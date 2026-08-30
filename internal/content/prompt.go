@@ -65,11 +65,5 @@ Plan the causal path silently, then write the complete article. Keep it focused 
 func reviewPrompt(topic topics.Topic, draft string) string {
 	return userPrompt(topic) + "\n" + sourcePacket(topic) + "\n\nDRAFT TO REVIEW:\n" + draft + `
 
-Silently perform a strict technical and line edit, then rewrite the article. Remove unsupported or distorted claims, missing causal steps, weak examples, version ambiguity, repeated ideas, noisy citations, and artificial prose. Check for related implementation fields or abstraction levels incorrectly treated as identical. Check every named-company and numeric claim against the source packet. Consolidate repeated explanations. Use two to four descriptive H2 headings and usually no more than one or two source markers per paragraph. Return only the complete final HTML fragment or markdown article, not review notes. Preserve valid [[source-id]] markers. Do not mention the source packet or editorial process, and do not include a Sources section.`
-}
-
-func repairPrompt(topic topics.Topic, body string, failures []string) string {
-	return userPrompt(topic) + "\n" + sourcePacket(topic) + "\n\nARTICLE TO REPAIR:\n" + body + "\n\nFAILED CHECKS:\n- " + strings.Join(failures, "\n- ") + `
-
-Repair only the listed failures without weakening technical detail or source support. Consolidate repetition if present. Return only the complete final HTML fragment or markdown article.`
+	Silently perform a strict technical and line edit, then rewrite the article. Remove unsupported or distorted claims, missing causal steps, weak examples, version ambiguity, repeated ideas, noisy citations, and artificial prose. Check for related implementation fields or abstraction levels incorrectly treated as identical. Check every named-company and numeric claim against the source packet. Consolidate repeated explanations. Use two to four descriptive H2 headings and usually no more than one or two source markers per paragraph. Return only the complete final HTML fragment or markdown article, not review notes. Preserve valid [[source-id]] markers. Do not mention the source packet or editorial process, and do not include a Sources section.`
 }

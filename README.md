@@ -11,7 +11,7 @@ Uses an LLM via **HTTP** (OpenAI-compatible: Groq, Ollama, OpenRouter, xAI, ...)
 | `http` (default) | `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` | Chat Completions API |
 | `cli` | `LLM_CLI_CMD`, optional `LLM_CLI_ARGS` | Runs a command; stdin = `### SYSTEM` / `### USER`; also sets `SYSTEMS_DAILY_SYSTEM` / `SYSTEMS_DAILY_USER`. **Does not** open claude.ai in a browser. |
 
-Each article normally uses two completions: a grounded draft and a technical review/rewrite. A third repair call runs only when deterministic quality checks reject the reviewed article. The included stub exercises that protocol without a live model:
+Each article uses exactly two completions: a grounded draft and a technical review/rewrite. If the review fails deterministic quality checks but the draft passes, the valid draft is published instead; the pipeline never spends a third repair call. The included stub exercises that protocol without a live model:
 
 ```bash
 LLM_PROVIDER=cli LLM_CLI_CMD=./scripts/example-llm-cli.sh ./bin/systems-daily preview --topic ebpf-xdp

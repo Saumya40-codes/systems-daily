@@ -70,25 +70,25 @@ func TestGenerateRejectsUnsourcedTopicBeforeCallingLLM(t *testing.T) {
 
 func TestGenerateRejectsUnknownCitation(t *testing.T) {
 	bad := "# Final\n\n## Path\n\none two [[invented]]\n\n## Cost\n\nthree four"
-	q := &queuedCompleter{responses: []string{"# Draft", bad, bad}}
+	q := &queuedCompleter{responses: []string{"# Draft", bad}}
 	_, err := (&Generator{LLM: q, TargetWordsMin: 3, TargetWordsMax: 20}).Generate(context.Background(), sourcedTopic())
 	if err == nil || !strings.Contains(err.Error(), "unknown source marker") {
 		t.Fatalf("got %v", err)
 	}
 }
 
-func TestGenerateRepairsFailedQualityGateOnce(t *testing.T) {
+func TestGenerateFallsBackToValidDraftWithoutThirdCall(t *testing.T) {
+	draft := "# Draft\n\n## Path\n\none two [[official]]\n\n## Limit\n\nthree four"
 	q := &queuedCompleter{responses: []string{
-		"# Draft",
+		draft,
 		"# Final\n\none two [[official]]",
-		"# Final\n\n## Path\n\none two [[official]]\n\n## Limit\n\nthree four",
 	}}
 	a, err := (&Generator{LLM: q, TargetWordsMin: 3, TargetWordsMax: 20}).Generate(context.Background(), sourcedTopic())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(q.prompts) != 3 || len(a.RepairReasons) == 0 || !strings.Contains(q.prompts[2], "FAILED CHECKS") {
-		t.Fatalf("repair provenance missing: calls=%d article=%+v", len(q.prompts), a)
+	if len(q.prompts) != 2 || a.Body != draft || len(a.ReviewReasons) == 0 {
+		t.Fatalf("draft fallback missing: calls=%d article=%+v", len(q.prompts), a)
 	}
 }
 
@@ -186,7 +186,7 @@ func TestSaveArtifactIncludesProvenance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`"pipeline": "grounded-v2"`, `"sources"`, `"quality"`} {
+	for _, want := range []string{`"pipeline": "grounded-v3"`, `"sources"`, `"quality"`} {
 		if !strings.Contains(string(data), want) {
 			t.Fatalf("artifact missing %s: %s", want, data)
 		}

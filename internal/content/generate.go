@@ -14,7 +14,7 @@ import (
 	"github.com/Saumya40-codes/systems-daily/internal/topics"
 )
 
-const PipelineVersion = "grounded-v2"
+const PipelineVersion = "grounded-v3"
 
 var citationRE = regexp.MustCompile(`\[\[([a-z0-9][a-z0-9-]*)\]\]`)
 var modelLinkRE = regexp.MustCompile(`(?i)<a\b|\bhref\s*=|\bsrc\s*=\s*["']\s*//|https?://|\[[^]]+\]\([^)]+\)`)
@@ -39,7 +39,7 @@ type Article struct {
 	SourceIDs     []string      `json:"source_ids"`
 	Draft         string        `json:"draft"`
 	ReviewPasses  int           `json:"review_passes"`
-	RepairReasons []string      `json:"repair_reasons,omitempty"`
+	ReviewReasons []string      `json:"review_rejection_reasons,omitempty"`
 	Quality       QualityReport `json:"quality"`
 }
 
@@ -75,6 +75,8 @@ func (g *Generator) Generate(ctx context.Context, topic topics.Topic) (*Article,
 	if err != nil {
 		return nil, err
 	}
+	draft = cleanBody(draft)
+	draftReport := validateArticle(draft, topic.Sources, minW, maxW)
 	body, err := g.chat(ctx, "review", systemPrompt(minW, maxW), reviewPrompt(topic, draft))
 	if err != nil {
 		return nil, err
@@ -82,28 +84,21 @@ func (g *Generator) Generate(ctx context.Context, topic topics.Topic) (*Article,
 	body = cleanBody(body)
 	report := validateArticle(body, topic.Sources, minW, maxW)
 	if !report.Passed {
-		reasons := append([]string(nil), report.Checks...)
-		body, err = g.chat(ctx, "quality repair", systemPrompt(minW, maxW), repairPrompt(topic, body, reasons))
-		if err != nil {
-			return nil, err
+		if draftReport.Passed {
+			return buildArticle(g, topic, draft, draft, draftReport, report.Checks), nil
 		}
-		body = cleanBody(body)
-		report = validateArticle(body, topic.Sources, minW, maxW)
-		if !report.Passed {
-			return nil, fmt.Errorf("repaired article failed quality gate: %s", strings.Join(report.Checks, "; "))
-		}
-		return buildArticle(g, topic, draft, body, report, reasons), nil
+		return nil, fmt.Errorf("draft and reviewed article failed quality gates; draft: %s; review: %s", strings.Join(draftReport.Checks, "; "), strings.Join(report.Checks, "; "))
 	}
 
 	return buildArticle(g, topic, draft, body, report, nil), nil
 }
 
-func buildArticle(g *Generator, topic topics.Topic, draft, body string, report QualityReport, repairReasons []string) *Article {
+func buildArticle(g *Generator, topic topics.Topic, draft, body string, report QualityReport, reviewReasons []string) *Article {
 	return &Article{
 		Topic: topic, Subject: buildSubject(topic, body), Body: body,
 		WordCount: wordCount(body), Model: g.LLM.Label(), Generated: time.Now().UTC(),
 		Pipeline: PipelineVersion, SourceIDs: report.CitationIDs,
-		Draft: draft, ReviewPasses: 1, RepairReasons: repairReasons, Quality: report,
+		Draft: draft, ReviewPasses: 1, ReviewReasons: reviewReasons, Quality: report,
 	}
 }
 
