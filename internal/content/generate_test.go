@@ -119,7 +119,7 @@ func TestQualityGateIgnoresHiddenLengthAndHeadings(t *testing.T) {
 		{"# Final\n\none [[official]]<script><h2>Hidden one</h2><h2>Hidden two</h2> two three four five", true},
 		{"# Final\n\none [[official]]\n```markdown\n## Hidden one\n## Hidden two\ntwo three four five\n```", false},
 	} {
-		report := validateArticle(tc.body, sourcedTopic().Sources, 5, 20)
+		report := validateArticle(tc.body, sourcedTopic().Sources, 205, 220)
 		checks := strings.Join(report.Checks, "; ")
 		if !strings.Contains(checks, "fewer than two") {
 			t.Fatalf("hidden headings passed for %q: %+v", tc.body, report)
@@ -138,11 +138,23 @@ func TestQualityGateRejectsSourceCommentary(t *testing.T) {
 	}
 }
 
-func TestQualityGateRejectsDocumentationFraming(t *testing.T) {
+func TestQualityGateAllowsNaturalLimitationLanguage(t *testing.T) {
 	body := "# Final\n\n## Path\n\none two [[official]].\n\n## Limit\n\nThe documented mechanism does not establish a fixed cost."
 	report := validateArticle(body, sourcedTopic().Sources, 1, 30)
-	if report.Passed || !strings.Contains(strings.Join(report.Checks, "; "), "editorial process") {
+	if !report.Passed {
 		t.Fatalf("unexpected report: %+v", report)
+	}
+}
+
+func TestQualityGateAllowsWordCountTolerance(t *testing.T) {
+	within := "# Final\n\n## Path\n\n" + strings.Repeat("word ", 1220) + "[[official]]\n\n## Limit\n\nend"
+	if report := validateArticle(within, sourcedTopic().Sources, 700, 1200); !report.Passed {
+		t.Fatalf("article within tolerance failed: %+v", report)
+	}
+	over := "# Final\n\n## Path\n\n" + strings.Repeat("word ", 1410) + "[[official]]\n\n## Limit\n\nend"
+	report := validateArticle(over, sourcedTopic().Sources, 700, 1200)
+	if report.Passed || !strings.Contains(strings.Join(report.Checks, "; "), "maximum 1400") {
+		t.Fatalf("article beyond tolerance passed: %+v", report)
 	}
 }
 
